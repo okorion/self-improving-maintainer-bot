@@ -163,6 +163,8 @@ def run_codex_task(
             input=task_text,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=work_root,
             timeout=timeout,
         )
