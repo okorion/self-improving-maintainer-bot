@@ -10,6 +10,7 @@
 - `docs/COMMANDS.md`: CLI 명령어 모음
 - `docs/CODEX_LOCAL.md`: 내 PC의 Codex 앱 인증 상태를 활용한 로컬 자가 개선 루프
 - `docs/LOCAL_CODEX_ONLY_SETUP.md`: `OPENAI_API_KEY` 없이 로컬 Codex만 쓰는 설정 매뉴얼
+- `docs/AUTO_IMPROVE_SCHEDULING.md`: 1시간 단위 자동 개선/PR/merge 스케줄링 매뉴얼
 
 이 프로젝트는 공개 GitHub 저장소에서 바로 시작할 수 있는 **자가 개선형 Maintainer/Docs Bot** 템플릿입니다.
 
