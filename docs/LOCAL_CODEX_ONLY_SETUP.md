@@ -38,6 +38,7 @@ TARGET_REPOSITORY=okorion/your-target-repo
 TARGET_DEFAULT_BRANCH=main
 TARGET_WORKTREE=targets/active
 TARGET_DOC_PATHS=README.md,docs
+TARGET_EVALS_PATH=evals/docs_qa.jsonl
 CODEX_TIMEOUT_SECONDS=3600
 ```
 

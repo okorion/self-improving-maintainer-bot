@@ -23,7 +23,7 @@ from self_maintainer_bot.issue_forms import parse_eval_issue
 from self_maintainer_bot.pr_summary import comment_pr_summary, write_pr_summary
 from self_maintainer_bot.reports import write_improvement_proposal
 from self_maintainer_bot.status import write_status_dashboard
-from self_maintainer_bot.target_repo import prepare_target_repo, target_status
+from self_maintainer_bot.target_repo import active_evals_path, prepare_target_repo, target_status
 from self_maintainer_bot.triage import label_definitions, suggest_labels
 
 
@@ -228,7 +228,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "add-eval":
         append_eval_case(
-            path=settings.evals_path,
+            path=active_evals_path(settings),
             case_id=args.id,
             question=args.question,
             must_include=args.must_include,
@@ -241,7 +241,7 @@ def main(argv: list[str] | None = None) -> int:
         with open(args.body_file, encoding="utf-8") as file:
             issue = parse_eval_issue(file.read())
         append_eval_case(
-            path=settings.evals_path,
+            path=active_evals_path(settings),
             case_id=issue.case_id,
             question=issue.question,
             must_include=issue.must_include,
@@ -252,9 +252,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "validate-evals":
-        result = validate_eval_file(settings.evals_path)
+        evals_path = active_evals_path(settings)
+        result = validate_eval_file(evals_path)
         if result.passed:
-            print(f"Eval file is valid: {settings.evals_path}")
+            print(f"Eval file is valid: {evals_path}")
             return 0
         for error in result.errors:
             print(error, file=sys.stderr)
@@ -327,6 +328,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Exists: {'yes' if status.exists else 'no'}")
         print(f"Git repo: {'yes' if status.is_git_repo else 'no'}")
         print(f"Doc files: {len(status.docs)}")
+        print(f"Eval file: {status.evals_path}")
+        print(f"Eval file exists: {'yes' if status.evals_exists else 'no'}")
         for path in status.docs[:20]:
             print(f"- {path}")
         return 0

@@ -7,6 +7,7 @@ from self_maintainer_bot.config import Settings
 from self_maintainer_bot.docs_eval import load_eval_cases
 from self_maintainer_bot.eval_store import validate_eval_file
 from self_maintainer_bot.reports import load_eval_results
+from self_maintainer_bot.target_repo import active_evals_path
 
 
 def write_status_dashboard(settings: Settings, *, output_path: Path | None = None) -> Path:
@@ -17,8 +18,9 @@ def write_status_dashboard(settings: Settings, *, output_path: Path | None = Non
 
 
 def render_status_dashboard(settings: Settings) -> str:
-    eval_cases = load_eval_cases(settings.evals_path)
-    validation = validate_eval_file(settings.evals_path)
+    evals_path = active_evals_path(settings)
+    eval_cases = load_eval_cases(evals_path)
+    validation = validate_eval_file(evals_path)
     latest_report = latest_report_path(settings.runs_dir)
     workflows = sorted((settings.root / ".github" / "workflows").glob("*.yml"))
 

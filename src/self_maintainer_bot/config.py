@@ -36,6 +36,7 @@ class Settings:
     target_default_branch: str
     target_worktree: Path
     target_doc_paths: list[str]
+    target_evals_path: Path | None
     codex_timeout_seconds: int
 
 
@@ -48,6 +49,7 @@ def load_settings() -> Settings:
         target_worktree_raw,
         default=ROOT / "targets" / "active",
     )
+    target_evals_path_raw = os.getenv("TARGET_EVALS_PATH") or None
     return Settings(
         root=ROOT,
         docs_path=ROOT / "docs" / "knowledge.md",
@@ -60,6 +62,7 @@ def load_settings() -> Settings:
         target_default_branch=os.getenv("TARGET_DEFAULT_BRANCH", "main"),
         target_worktree=target_worktree,
         target_doc_paths=target_doc_paths,
+        target_evals_path=Path(target_evals_path_raw) if target_evals_path_raw else None,
         codex_timeout_seconds=parse_int(os.getenv("CODEX_TIMEOUT_SECONDS"), default=3600),
     )
 

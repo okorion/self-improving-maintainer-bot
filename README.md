@@ -77,6 +77,9 @@ python -m self_maintainer_bot.cli prepare-target
 python -m self_maintainer_bot.cli target-status
 ```
 
+If the target repository has its own eval cases, set `TARGET_EVALS_PATH`, for
+example `TARGET_EVALS_PATH=evals/docs_qa.jsonl`.
+
 ### 1.5. GitHub 자동 PR token
 
 자동화가 GitHub PR을 열고 그 PR에서 정상 체크를 돌리려면 `BOT_GITHUB_TOKEN` repository secret을 추가하세요.

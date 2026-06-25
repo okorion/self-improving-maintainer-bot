@@ -8,7 +8,7 @@ from pathlib import Path
 
 from self_maintainer_bot.config import Settings
 from self_maintainer_bot.eval_store import validate_single_case
-from self_maintainer_bot.target_repo import load_target_docs_text
+from self_maintainer_bot.target_repo import active_evals_path, load_target_docs_text
 
 
 @dataclass(frozen=True)
@@ -141,7 +141,7 @@ def run_docs_eval(settings: Settings, *, dry_run: bool) -> tuple[list[EvalResult
 
     docs_text = load_target_docs_text(settings)
     system_prompt = settings.docs_prompt_path.read_text(encoding="utf-8")
-    cases = load_eval_cases(settings.evals_path)
+    cases = load_eval_cases(active_evals_path(settings))
 
     results: list[EvalResult] = []
     for case in cases:

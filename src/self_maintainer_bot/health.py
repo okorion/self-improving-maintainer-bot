@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from self_maintainer_bot.config import Settings
 from self_maintainer_bot.docs_eval import run_docs_eval
 from self_maintainer_bot.eval_store import validate_eval_file
-from self_maintainer_bot.target_repo import target_status
+from self_maintainer_bot.target_repo import active_evals_path, target_status
 from self_maintainer_bot.triage import suggest_labels
 
 
@@ -19,9 +19,10 @@ class Check:
 
 
 def doctor_checks(settings: Settings) -> list[Check]:
+    evals_path = active_evals_path(settings)
     required_paths = [
         settings.docs_path,
-        settings.evals_path,
+        evals_path,
         settings.docs_prompt_path,
         settings.improvement_prompt_path,
         settings.root / "policies" / "self_improvement_policy.md",
@@ -61,7 +62,7 @@ def doctor_checks(settings: Settings) -> list[Check]:
                 detail="present" if path.exists() else "missing",
             )
         )
-    eval_validation = validate_eval_file(settings.evals_path)
+    eval_validation = validate_eval_file(evals_path)
     checks.append(
         Check(
             name="eval-file",

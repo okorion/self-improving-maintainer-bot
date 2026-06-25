@@ -16,6 +16,8 @@ class TargetRepoStatus:
     exists: bool
     is_git_repo: bool
     docs: list[Path]
+    evals_path: Path
+    evals_exists: bool
 
 
 def target_root(settings: Settings) -> Path:
@@ -34,6 +36,8 @@ def target_status(settings: Settings) -> TargetRepoStatus:
         exists=root.exists(),
         is_git_repo=(root / ".git").exists(),
         docs=find_target_docs(settings, root=root) if root.exists() else [],
+        evals_path=active_evals_path(settings),
+        evals_exists=active_evals_path(settings).exists(),
     )
 
 
@@ -121,6 +125,14 @@ def load_target_docs_text(settings: Settings) -> str:
             ]
         )
     return "\n".join(chunks).strip() + "\n"
+
+
+def active_evals_path(settings: Settings) -> Path:
+    if not settings.target_repository or settings.target_evals_path is None:
+        return settings.evals_path
+    if settings.target_evals_path.is_absolute():
+        return settings.target_evals_path
+    return target_root(settings) / settings.target_evals_path
 
 
 def run_git(args: list[str], *, cwd: Path) -> None:
