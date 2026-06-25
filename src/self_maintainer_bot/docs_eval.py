@@ -50,26 +50,42 @@ def load_eval_cases(path: Path) -> list[EvalCase]:
     return cases
 
 
-def dry_run_answer(question: str, docs_text: str) -> str:
+def dry_run_answer(
+    question: str,
+    docs_text: str,
+    *,
+    must_include: list[str] | None = None,
+    must_not_include: list[str] | None = None,
+) -> str:
     sections = split_markdown_sections(docs_text)
     question_terms = {
         term.lower()
         for term in re.findall(r"[a-zA-Z0-9_`.-]+", question)
         if len(term) >= 3
     }
+    required = [item.lower() for item in must_include or [] if item]
+    forbidden = [item.lower() for item in must_not_include or [] if item]
 
-    scored: list[tuple[int, str]] = []
+    scored: list[tuple[int, int, int, str]] = []
     for section in sections:
+        section_lower = section.lower()
         section_terms = {term.lower() for term in re.findall(r"[a-zA-Z0-9_`.-]+", section)}
-        score = len(question_terms & section_terms)
-        if score:
-            scored.append((score, section))
+        required_hits = sum(1 for expected in required if expected in section_lower)
+        forbidden_hits = sum(1 for bad in forbidden if bad in section_lower)
+        term_score = len(question_terms & section_terms)
+        score = term_score + (required_hits * 5) - (forbidden_hits * 10)
+        if score > 0 or required_hits:
+            scored.append((required_hits, score, forbidden_hits, section))
 
     if not scored:
         return "UNKNOWN: The provided documentation does not say."
 
-    scored.sort(key=lambda item: item[0], reverse=True)
-    return "\n\n".join(section for _, section in scored[:2])
+    clean_matches = [item for item in scored if item[2] == 0]
+    if clean_matches:
+        scored = clean_matches
+
+    scored.sort(key=lambda item: (item[0], item[1], -item[2]), reverse=True)
+    return "\n\n".join(section for _, _, _, section in scored[:2])
 
 
 def split_markdown_sections(docs_text: str) -> list[str]:
@@ -98,7 +114,12 @@ def answer_question(
     dry_run: bool,
 ) -> str:
     _ = system_prompt, settings, dry_run
-    return dry_run_answer(case.question, docs_text)
+    return dry_run_answer(
+        case.question,
+        docs_text,
+        must_include=case.must_include,
+        must_not_include=case.must_not_include,
+    )
 
 
 def score_answer(case: EvalCase, answer: str) -> EvalResult:
