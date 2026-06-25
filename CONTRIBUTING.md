@@ -10,8 +10,8 @@ Thanks for helping improve this project.
 4. Run local checks before opening a PR.
 
 ```bash
-python -m maintainer_bot.cli smoke-check
-python -m maintainer_bot.cli validate-evals
+python -m self_maintainer_bot.cli smoke-check
+python -m self_maintainer_bot.cli validate-evals
 ```
 
 ## Eval-first Changes

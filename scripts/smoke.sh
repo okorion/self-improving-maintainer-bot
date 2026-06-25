@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-python -m maintainer_bot.cli smoke-check
+python -m self_maintainer_bot.cli smoke-check

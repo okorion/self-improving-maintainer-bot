@@ -28,7 +28,7 @@ jobs:
 
       - name: Write PR summary
         run: |
-          python -m maintainer_bot.cli summarize-pr \
+          python -m self_maintainer_bot.cli summarize-pr \
             --base-ref "origin/${{ github.base_ref }}" \
             --head-ref "HEAD" \
             --output runs/pr-summary.md
@@ -38,7 +38,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python -m maintainer_bot.cli comment-pr-summary \
+          python -m self_maintainer_bot.cli comment-pr-summary \
             --repo "$GITHUB_REPOSITORY" \
             --pr-number "${{ github.event.pull_request.number }}" \
             --summary-file runs/pr-summary.md

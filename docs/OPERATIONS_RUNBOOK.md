@@ -4,31 +4,31 @@
 
 - 새 이슈의 라벨이 맞는지 확인합니다.
 - 잘못 붙은 라벨은 사람이 수정합니다.
-- 반복적으로 틀린 라벨은 `src/maintainer_bot/triage.py`의 키워드 규칙 후보로 기록합니다.
+- 반복적으로 틀린 라벨은 `src/self_maintainer_bot/triage.py`의 키워드 규칙 후보로 기록합니다.
 
 ## 매주
 
 1. 최근 이슈/PR/질문에서 문서 QA 실패 사례를 고릅니다.
 2. GitHub에서 `Eval failure` 이슈를 생성합니다.
 3. 생성된 eval 추가 PR을 리뷰하고 merge합니다.
-4. `python -m maintainer_bot.cli smoke-check`를 실행합니다.
-5. `python -m maintainer_bot.cli eval-docs`를 실행합니다.
-6. 실패가 있으면 `python -m maintainer_bot.cli propose-improvement`를 실행합니다.
+4. `python -m self_maintainer_bot.cli smoke-check`를 실행합니다.
+5. `python -m self_maintainer_bot.cli eval-docs`를 실행합니다.
+6. 실패가 있으면 `python -m self_maintainer_bot.cli propose-improvement`를 실행합니다.
 7. proposal을 읽고 사람이 실제 변경 PR을 작성합니다.
 
 ## 릴리즈 전
 
 ```bash
-python -m maintainer_bot.cli smoke-check
-python -m maintainer_bot.cli eval-docs --dry-run
-python -m maintainer_bot.cli doctor
+python -m self_maintainer_bot.cli smoke-check
+python -m self_maintainer_bot.cli eval-docs --dry-run
+python -m self_maintainer_bot.cli doctor
 ```
 
 API mode를 릴리즈 게이트로 쓰는 경우:
 
 ```bash
-python -m maintainer_bot.cli doctor --require-api-key
-python -m maintainer_bot.cli eval-docs
+python -m self_maintainer_bot.cli doctor --require-api-key
+python -m self_maintainer_bot.cli eval-docs
 ```
 
 ## 실패 대응

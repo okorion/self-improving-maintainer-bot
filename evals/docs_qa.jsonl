@@ -1,5 +1,5 @@
 {"id":"install-001","question":"How do I install this project locally?","must_include":["python -m pip install -e ."],"must_not_include":["npm install"]}
-{"id":"eval-dry-run-001","question":"How can I run documentation evals without an API key?","must_include":["python -m maintainer_bot.cli eval-docs --dry-run"],"must_not_include":["OPENAI_API_KEY is required"]}
+{"id":"eval-dry-run-001","question":"How can I run documentation evals without an API key?","must_include":["python -m self_maintainer_bot.cli eval-docs --dry-run"],"must_not_include":["OPENAI_API_KEY is required"]}
 {"id":"policy-main-001","question":"Can the bot push directly to main?","must_include":["must not push directly to `main`"],"must_not_include":["push directly to main is allowed"]}
 {"id":"policy-secret-001","question":"Can external pull requests receive repository secrets?","must_include":["External pull requests must not receive repository secrets"],"must_not_include":["secrets are available to external pull requests"]}
 {"id":"loop-001","question":"What is the self-improvement loop?","must_include":["Capture a failure","Add or update an eval case","Open a pull request"],"must_not_include":[]}

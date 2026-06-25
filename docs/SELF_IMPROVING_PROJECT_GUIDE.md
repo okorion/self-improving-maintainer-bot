@@ -223,16 +223,16 @@ eval이 너무 넓거나 틀린 정답을 요구합니다.
 ## 9. 로컬에서 같은 루프 재현
 
 ```bash
-python -m maintainer_bot.cli smoke-check
-python -m maintainer_bot.cli validate-evals
-python -m maintainer_bot.cli eval-docs --dry-run
-python -m maintainer_bot.cli propose-improvement --dry-run
+python -m self_maintainer_bot.cli smoke-check
+python -m self_maintainer_bot.cli validate-evals
+python -m self_maintainer_bot.cli eval-docs --dry-run
+python -m self_maintainer_bot.cli propose-improvement --dry-run
 ```
 
 issue form 본문을 파일로 저장했다면:
 
 ```bash
-python -m maintainer_bot.cli add-eval-from-issue \
+python -m self_maintainer_bot.cli add-eval-from-issue \
   --body-file work/issue-body.md \
   --issue-number 1
 ```
