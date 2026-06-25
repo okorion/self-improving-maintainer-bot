@@ -12,6 +12,11 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$env:Path = @(
+  [Environment]::GetEnvironmentVariable("Path", "User"),
+  [Environment]::GetEnvironmentVariable("Path", "Machine"),
+  $env:Path
+) -join ";"
 $BotRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 $RunId = Get-Date -Format "yyyyMMdd-HHmmss"
 $LogDir = Join-Path $BotRoot "runs\scheduler"
@@ -250,6 +255,13 @@ try {
   }
 
   Write-Log "Auto improve run completed."
+}
+catch {
+  Write-Log "ERROR $($_.Exception.Message)"
+  if ($_.ScriptStackTrace) {
+    Write-Log $_.ScriptStackTrace
+  }
+  throw
 }
 finally {
   Remove-Item -LiteralPath $LockDir -Recurse -Force -ErrorAction SilentlyContinue
