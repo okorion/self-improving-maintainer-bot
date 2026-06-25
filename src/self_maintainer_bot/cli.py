@@ -5,7 +5,14 @@ import json
 import os
 import sys
 from dataclasses import asdict
+from pathlib import Path
 
+from self_maintainer_bot.codex_local import (
+    check_codex_status,
+    run_codex_local_loop,
+    run_codex_task,
+    write_codex_task,
+)
 from self_maintainer_bot.config import load_settings
 from self_maintainer_bot.docs_eval import run_docs_eval
 from self_maintainer_bot.docs_patch import propose_docs_patch
@@ -73,7 +80,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     sync = subparsers.add_parser("sync-labels", help="Create or update standard GitHub labels.")
     sync.add_argument("--repo", default=os.getenv("GITHUB_REPOSITORY"), help="owner/repo")
-    sync.add_argument("--token-env", default="GITHUB_TOKEN", help="Environment variable containing token.")
+    sync.add_argument(
+        "--token-env",
+        default="GITHUB_TOKEN",
+        help="Environment variable containing token.",
+    )
 
     apply_labels = subparsers.add_parser(
         "apply-issue-labels",
@@ -99,13 +110,82 @@ def build_parser() -> argparse.ArgumentParser:
         "comment-pr-summary",
         help="Create or update a PR summary comment.",
     )
-    comment_summary.add_argument("--repo", default=os.getenv("GITHUB_REPOSITORY"), help="owner/repo")
+    comment_summary.add_argument(
+        "--repo",
+        default=os.getenv("GITHUB_REPOSITORY"),
+        help="owner/repo",
+    )
     comment_summary.add_argument("--pr-number", type=int, required=True)
     comment_summary.add_argument("--summary-file", default="runs/pr-summary.md")
     comment_summary.add_argument("--token-env", default="GITHUB_TOKEN")
 
     status = subparsers.add_parser("update-status", help="Write docs/PROJECT_STATUS.md.")
     status.add_argument("--output", default="docs/PROJECT_STATUS.md")
+
+    subparsers.add_parser(
+        "codex-status",
+        help="Check whether the local Codex CLI is available and logged in.",
+    )
+
+    codex_task = subparsers.add_parser(
+        "make-codex-task",
+        help="Write a local Codex task prompt from the latest eval report.",
+    )
+    codex_task.add_argument(
+        "--goal",
+        default="Improve the repository based on the latest documentation eval signal.",
+    )
+    codex_task.add_argument(
+        "--scope",
+        choices=["docs", "prompts", "evals", "code", "mixed"],
+        default="docs",
+    )
+    codex_task.add_argument("--output", help="Output task file path.")
+
+    run_codex = subparsers.add_parser(
+        "run-codex-task",
+        help="Run a local Codex task with the authenticated Codex CLI.",
+    )
+    run_codex.add_argument("--task-file", required=True)
+    run_codex.add_argument("--model")
+    run_codex.add_argument(
+        "--sandbox",
+        choices=["read-only", "workspace-write"],
+        default="workspace-write",
+    )
+    run_codex.add_argument("--no-full-auto", action="store_true")
+    run_codex.add_argument("--skip-verify", action="store_true")
+
+    codex_loop = subparsers.add_parser(
+        "codex-local-loop",
+        help="Run evals, write a local Codex task, and optionally execute it.",
+    )
+    codex_loop.add_argument(
+        "--goal",
+        default="Improve the repository based on the latest documentation eval signal.",
+    )
+    codex_loop.add_argument(
+        "--scope",
+        choices=["docs", "prompts", "evals", "code", "mixed"],
+        default="docs",
+    )
+    codex_loop.add_argument(
+        "--api-eval",
+        action="store_true",
+        help="Use OpenAI API eval instead of dry-run eval.",
+    )
+    codex_loop.add_argument(
+        "--execute",
+        action="store_true",
+        help="Execute the generated task with Codex CLI.",
+    )
+    codex_loop.add_argument("--model")
+    codex_loop.add_argument(
+        "--sandbox",
+        choices=["read-only", "workspace-write"],
+        default="workspace-write",
+    )
+    codex_loop.add_argument("--skip-verify", action="store_true")
 
     return parser
 
@@ -236,6 +316,66 @@ def main(argv: list[str] | None = None) -> int:
         path = write_status_dashboard(settings, output_path=settings.root / args.output)
         print(f"Status dashboard written: {path}")
         return 0
+
+    if args.command == "codex-status":
+        status = check_codex_status()
+        command_text = " ".join(status.command)
+        print(f"{'PASS' if status.available else 'FAIL'} codex-cli: {command_text}")
+        login_status = status.output or status.error
+        print(f"{'PASS' if status.authenticated else 'FAIL'} codex-login: {login_status}")
+        return 0 if status.available and status.authenticated else 1
+
+    if args.command == "make-codex-task":
+        output_path = settings.root / args.output if args.output else None
+        path = write_codex_task(
+            settings,
+            goal=args.goal,
+            scope=args.scope,
+            output_path=output_path,
+        )
+        print(f"Codex task written: {path}")
+        print(f"Run: python -m self_maintainer_bot.cli run-codex-task --task-file {path}")
+        return 0
+
+    if args.command == "run-codex-task":
+        result = run_codex_task(
+            settings,
+            task_path=Path(args.task_file),
+            model=args.model,
+            sandbox=args.sandbox,
+            full_auto=not args.no_full_auto,
+            skip_verify=args.skip_verify,
+        )
+        print(f"Codex task: {result.task_path}")
+        print(f"Codex log: {result.log_path}")
+        print(f"Codex last message: {result.last_message_path}")
+        if result.verification_returncode is not None:
+            print(f"Verification exit code: {result.verification_returncode}")
+        if result.returncode != 0:
+            return result.returncode
+        return result.verification_returncode or 0
+
+    if args.command == "codex-local-loop":
+        task_path, result = run_codex_local_loop(
+            settings,
+            goal=args.goal,
+            scope=args.scope,
+            api_eval=args.api_eval,
+            execute=args.execute,
+            model=args.model,
+            sandbox=args.sandbox,
+            skip_verify=args.skip_verify,
+        )
+        if result is None:
+            print(f"Run: python -m self_maintainer_bot.cli run-codex-task --task-file {task_path}")
+            return 0
+        print(f"Codex log: {result.log_path}")
+        print(f"Codex last message: {result.last_message_path}")
+        if result.verification_returncode is not None:
+            print(f"Verification exit code: {result.verification_returncode}")
+        if result.returncode != 0:
+            return result.returncode
+        return result.verification_returncode or 0
 
     raise AssertionError(f"Unhandled command: {args.command}")
 

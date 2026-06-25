@@ -13,6 +13,15 @@
 
 자동화가 직접 PR을 열게 하려면 GitHub repository secret `BOT_GITHUB_TOKEN`을 먼저 설정합니다. 이 token은 OpenAI API 호출용이 아니라 GitHub PR 생성용입니다.
 
+내 PC에서 Codex 앱 인증 상태를 활용한 로컬 개선 루프를 쓰려면:
+
+```powershell
+python -m self_maintainer_bot.cli codex-status
+.\scripts\codex-local-loop.ps1 -Execute
+```
+
+처음에는 `-Execute` 없이 task 파일만 생성해서 내용을 확인하는 것을 권장합니다.
+
 ## 좋은 eval case 기준
 
 좋은 eval은 구체적입니다.

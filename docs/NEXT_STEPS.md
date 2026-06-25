@@ -149,6 +149,32 @@ python -m self_maintainer_bot.cli propose-improvement
 3. 반복 실패하면 eval case를 더 작게 쪼갭니다.
 4. 그래도 어렵다면 코드 개선 후보로 올립니다.
 
+## Phase 5.5. 로컬 Codex 앱 루프 켜기
+
+내 PC에서는 Codex 앱/CLI 로그인 상태를 활용해 더 큰 수정 작업을 로컬에서 처리할 수 있습니다.
+
+먼저 상태를 확인합니다.
+
+```powershell
+python -m self_maintainer_bot.cli codex-status
+```
+
+작업 명세만 만들려면:
+
+```powershell
+python -m self_maintainer_bot.cli codex-local-loop
+```
+
+Codex로 실제 수정까지 실행하려면:
+
+```powershell
+.\scripts\codex-local-loop.ps1 -Execute
+```
+
+이 루프는 commit/push/PR 생성을 하지 않습니다. Codex가 변경한 diff를 사람이 확인한 뒤 기존 GitHub PR 루프로 올립니다.
+
+자세한 절차는 `docs/CODEX_LOCAL.md`를 따르세요.
+
 ## Phase 6. 확장 순서
 
 권장 확장 순서는 다음입니다.

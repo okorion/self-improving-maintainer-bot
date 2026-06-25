@@ -8,6 +8,7 @@
 - `docs/GITHUB_SETUP.md`: repository secrets, Actions, branch protection 설정
 - `docs/OPERATIONS_RUNBOOK.md`: 매일/매주 운영 루틴과 실패 대응
 - `docs/COMMANDS.md`: CLI 명령어 모음
+- `docs/CODEX_LOCAL.md`: 내 PC의 Codex 앱 인증 상태를 활용한 로컬 자가 개선 루프
 
 이 프로젝트는 공개 GitHub 저장소에서 바로 시작할 수 있는 **자가 개선형 Maintainer/Docs Bot** 템플릿입니다.
 
@@ -19,6 +20,8 @@
 4. 개선안은 main에 직접 반영하지 않고 Pull Request로만 제안합니다.
 
 이 구조는 "스스로 main을 고치는 봇"이 아니라, **실패 사례를 평가 데이터로 축적하고 검증된 개선 PR을 여는 봇**입니다.
+
+로컬 PC에서는 Codex 앱/CLI 로그인 상태를 활용한 선택적 실행 루프도 사용할 수 있습니다. GitHub Actions와 OpenAI API 기반 루프는 그대로 유지하고, 복잡한 수정은 로컬 Codex가 작업 명세를 받아 처리하는 구조입니다.
 
 ## 1. 빠른 시작
 
@@ -81,6 +84,28 @@ python -m self_maintainer_bot.cli eval-docs
 
 `BOT_GITHUB_TOKEN`이 없으면 PR 생성 workflow는 PR을 만들지 않고 notice만 남깁니다. GitHub 기본 `GITHUB_TOKEN`으로 만든 PR은 재귀 실행 방지 때문에 PR 체크가 `action_required`로 멈출 수 있기 때문입니다.
 
+### 1.5. 로컬 Codex 앱 루프
+
+내 PC의 Codex 앱/CLI 인증 상태를 확인합니다.
+
+```powershell
+python -m self_maintainer_bot.cli codex-status
+```
+
+API 호출 없이 eval을 돌리고 Codex 작업 명세만 만들려면:
+
+```powershell
+python -m self_maintainer_bot.cli codex-local-loop
+```
+
+생성된 task를 검토한 뒤 로컬 Codex로 실행하려면:
+
+```powershell
+.\scripts\codex-local-loop.ps1 -Execute
+```
+
+자세한 내용은 `docs/CODEX_LOCAL.md`를 따르세요.
+
 ## 2. 프로젝트 구조
 
 ```text
@@ -98,15 +123,19 @@ self-improving-maintainer-bot/
     improvement_planner.md     # 실패 분석/개선 제안 프롬프트
   policies/
     self_improvement_policy.md # 자동 변경 안전 정책
+    codex_local_policy.md      # 로컬 Codex 실행 안전 정책
   src/self_maintainer_bot/
     cli.py                     # CLI 진입점
     config.py                  # 설정 로딩
     docs_eval.py               # 문서 QA eval 실행
     llm.py                     # OpenAI Responses API 래퍼
+    codex_local.py             # 로컬 Codex task/runner
     reports.py                 # 리포트 저장
     triage.py                  # 이슈 분류 예시
   runs/
     .gitkeep                   # 실행 결과 저장 위치
+    codex-tasks/               # 로컬 Codex task 파일, gitignore
+    codex-logs/                # 로컬 Codex 실행 로그, gitignore
 ```
 
 ## 3. 첫 번째 운영 루프

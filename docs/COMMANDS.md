@@ -13,6 +13,44 @@ API 키까지 강제:
 python -m self_maintainer_bot.cli doctor --require-api-key
 ```
 
+## 로컬 Codex 루프
+
+내 PC의 Codex CLI와 로그인 상태 확인:
+
+```bash
+python -m self_maintainer_bot.cli codex-status
+```
+
+dry-run eval을 실행하고 Codex task만 생성:
+
+```bash
+python -m self_maintainer_bot.cli codex-local-loop
+```
+
+eval, task 생성, 로컬 Codex 실행까지 한 번에 진행:
+
+```bash
+python -m self_maintainer_bot.cli codex-local-loop --execute
+```
+
+PowerShell wrapper:
+
+```powershell
+.\scripts\codex-local-loop.ps1 -Execute
+```
+
+OpenAI API eval 결과를 먼저 사용:
+
+```powershell
+.\scripts\codex-local-loop.ps1 -ApiEval -Execute
+```
+
+이미 생성된 task 실행:
+
+```bash
+python -m self_maintainer_bot.cli run-codex-task --task-file runs/codex-tasks/YOUR_TASK.md
+```
+
 ## 문서 eval
 
 ```bash
