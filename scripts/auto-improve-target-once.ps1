@@ -50,6 +50,28 @@ function Invoke-CommandLine {
   }
 }
 
+function Invoke-NativeCommand {
+  param(
+    [string]$FilePath,
+    [string[]]$Arguments,
+    [string]$WorkingDirectory
+  )
+  $renderedArgs = ($Arguments | ForEach-Object {
+    if ($_ -match "\s") { "`"$_`"" } else { $_ }
+  }) -join " "
+  Write-Log "RUN [$WorkingDirectory] $FilePath $renderedArgs"
+  Push-Location $WorkingDirectory
+  try {
+    & $FilePath @Arguments *>> $LogPath
+    if ($LASTEXITCODE -ne 0) {
+      throw "Command failed with exit code ${LASTEXITCODE}: $FilePath $renderedArgs"
+    }
+  }
+  finally {
+    Pop-Location
+  }
+}
+
 function Get-TargetRoot {
   $code = "from self_maintainer_bot.config import load_settings; from self_maintainer_bot.target_repo import target_root; print(target_root(load_settings()))"
   Push-Location $BotRoot
@@ -211,17 +233,18 @@ try {
     }
     Invoke-CommandLine -Command "gh pr checks $prNumber --repo $TargetRepo --watch" -WorkingDirectory $TargetRoot
 
-    $mergeArgs = "gh pr merge $prNumber --repo $TargetRepo --delete-branch"
+    $mergeArgs = @("pr", "merge", $prNumber, "--repo", $TargetRepo, "--delete-branch")
+    $mergeBody = "자동 자가 개선 결과를 병합합니다."
     if ($MergeMethod -eq "squash") {
-      $mergeArgs += " --squash --subject `"$title`" --body `"자동 자가 개선 결과를 병합합니다.`""
+      $mergeArgs += @("--squash", "--subject", $title, "--body", $mergeBody)
     }
     elseif ($MergeMethod -eq "rebase") {
-      $mergeArgs += " --rebase"
+      $mergeArgs += "--rebase"
     }
     else {
-      $mergeArgs += " --merge --subject `"$title`" --body `"자동 자가 개선 결과를 병합합니다.`""
+      $mergeArgs += @("--merge", "--subject", $title, "--body", $mergeBody)
     }
-    Invoke-CommandLine -Command $mergeArgs -WorkingDirectory $TargetRoot
+    Invoke-NativeCommand -FilePath "gh" -Arguments $mergeArgs -WorkingDirectory $TargetRoot
     Invoke-CommandLine -Command "git switch $BaseBranch" -WorkingDirectory $TargetRoot
     Invoke-CommandLine -Command "git pull --ff-only origin $BaseBranch" -WorkingDirectory $TargetRoot
   }
