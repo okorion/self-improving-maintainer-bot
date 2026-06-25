@@ -1,0 +1,60 @@
+name: Eval From Issue
+
+on:
+  issues:
+    types: [opened, edited, labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: read
+
+jobs:
+  add-eval:
+    if: contains(github.event.issue.labels.*.name, 'eval')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e .
+
+      - name: Write issue body
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          mkdir -p work
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          Path("work/issue-body.md").write_text(os.environ.get("ISSUE_BODY", ""), encoding="utf-8")
+          PY
+
+      - name: Add eval case from issue
+        run: |
+          python -m maintainer_bot.cli add-eval-from-issue \
+            --body-file work/issue-body.md \
+            --issue-number "${{ github.event.issue.number }}"
+
+      - name: Validate eval file
+        run: python -m maintainer_bot.cli validate-evals
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v8
+        with:
+          commit-message: "eval: add case from issue #${{ github.event.issue.number }}"
+          title: "eval: add case from issue #${{ github.event.issue.number }}"
+          body: |
+            Adds a documentation QA eval case from issue #${{ github.event.issue.number }}.
+
+            Review the expected and forbidden assertions before merging.
+          branch: bot/add-eval-${{ github.event.issue.number }}
+          add-paths: |
+            evals/docs_qa.jsonl

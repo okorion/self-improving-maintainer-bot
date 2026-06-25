@@ -1,0 +1,30 @@
+name: Weekly Health
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e .
+
+      - name: Smoke check
+        run: python -m maintainer_bot.cli smoke-check
+
+      - name: Validate eval file
+        run: python -m maintainer_bot.cli validate-evals

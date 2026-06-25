@@ -1,0 +1,59 @@
+name: Docs Patch Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      use_openai:
+        description: "Use OPENAI_API_KEY for eval before generating patch"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  propose-docs-patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e .
+
+      - name: Run dry-run eval
+        if: inputs.use_openai == 'false'
+        run: python -m maintainer_bot.cli eval-docs --dry-run --fail-under 0
+
+      - name: Run OpenAI eval
+        if: inputs.use_openai == 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.5' }}
+        run: python -m maintainer_bot.cli eval-docs --fail-under 0
+
+      - name: Propose docs patch
+        run: python -m maintainer_bot.cli propose-docs-patch
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v8
+        with:
+          commit-message: "docs: add candidate fixes from failed evals"
+          title: "docs: add candidate fixes from failed evals"
+          body: |
+            This PR adds candidate documentation text generated from failed eval cases.
+
+            Review and edit the wording before merging. Do not merge generated wording blindly.
+          branch: bot/docs-patch-candidate
+          add-paths: |
+            docs/knowledge.md

@@ -1,0 +1,50 @@
+name: Status Dashboard
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 0 * * 1"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-status:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e .
+
+      - name: Run dry-run eval
+        run: python -m maintainer_bot.cli eval-docs --dry-run --fail-under 0
+
+      - name: Update status dashboard
+        run: python -m maintainer_bot.cli update-status
+
+      - name: Upload eval reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: status-dashboard-eval-reports
+          path: runs/docs-eval-*
+          if-no-files-found: ignore
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v8
+        with:
+          commit-message: "docs: update project status dashboard"
+          title: "docs: update project status dashboard"
+          body: |
+            Updates the generated project status dashboard.
+          branch: bot/status-dashboard
+          add-paths: |
+            docs/PROJECT_STATUS.md

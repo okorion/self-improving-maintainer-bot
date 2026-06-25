@@ -1,0 +1,28 @@
+name: Feature request
+description: Suggest an improvement.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should change?
+    validations:
+      required: true
+  - type: dropdown
+    id: automation-level
+    attributes:
+      label: Automation level
+      options:
+        - L0 report only
+        - L1 eval proposal
+        - L2 docs proposal
+        - L3 prompt proposal
+        - L4 limited code change
