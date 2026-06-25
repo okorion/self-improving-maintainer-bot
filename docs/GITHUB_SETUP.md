@@ -6,9 +6,14 @@
 
 Settings > Secrets and variables > Actions > Repository secrets에서 추가합니다.
 
-필수는 아닙니다. API mode를 쓸 때만 필요합니다.
+API mode와 자동 PR 생성을 얼마나 쓸지에 따라 필요한 secret이 다릅니다.
 
-- `OPENAI_API_KEY`
+- `OPENAI_API_KEY`: OpenAI API mode를 쓸 때만 필요합니다.
+- `BOT_GITHUB_TOKEN`: 자동화가 PR을 만들 때 권장됩니다.
+
+`BOT_GITHUB_TOKEN`은 GitHub fine-grained personal access token 또는 GitHub App token을 넣습니다. 최소 권한은 이 저장소의 `Contents: Read and write`, `Pull requests: Read and write`, `Issues: Read and write`입니다.
+
+중요: `GITHUB_TOKEN`으로 만든 PR은 GitHub의 재귀 실행 방지 때문에 후속 PR 체크가 `action_required`로 멈출 수 있습니다. 이 템플릿의 PR 생성 workflow는 `BOT_GITHUB_TOKEN`이 있을 때만 PR을 만들고, 없으면 notice만 남깁니다.
 
 ## 2. Repository variables
 
@@ -29,6 +34,8 @@ Settings > Actions > General에서 확인합니다.
 - Allow GitHub Actions to create and approve pull requests: 켜기
 
 기본 권한은 read-only로 두고, 필요한 workflow에서만 `contents: write`, `pull-requests: write`, `issues: write`를 선언합니다.
+
+자동 PR을 운영하려면 위 Actions 설정과 별도로 `BOT_GITHUB_TOKEN` secret을 추가하세요. 이 secret은 OpenAI API 호출과 무관하며, GitHub에서 PR branch와 PR을 만들기 위한 권한입니다.
 
 ## 4. Branch protection
 
@@ -58,14 +65,14 @@ Actions 탭에서 `Sync Labels` workflow를 수동 실행합니다.
 
 ```bash
 export GITHUB_TOKEN=...
-python -m maintainer_bot.cli sync-labels --repo OWNER/REPO
+python -m self_maintainer_bot.cli sync-labels --repo OWNER/REPO
 ```
 
 PowerShell:
 
 ```powershell
 $env:GITHUB_TOKEN="..."
-python -m maintainer_bot.cli sync-labels --repo OWNER/REPO
+python -m self_maintainer_bot.cli sync-labels --repo OWNER/REPO
 ```
 
 생성되는 라벨:
@@ -133,12 +140,32 @@ python -m maintainer_bot.cli sync-labels --repo OWNER/REPO
 
 1. `Sync Labels` 실행
 2. `Docs Bot Eval` dry-run 실행
-3. 테스트 이슈 생성
-4. 이슈에 라벨이 붙는지 확인
-5. `Eval failure` 이슈 생성 후 eval 추가 PR 확인
-6. `Self Improve Docs Proposal` dry-run 실행
+3. 자동 PR을 쓸 예정이면 `BOT_GITHUB_TOKEN` secret 추가
+4. 테스트 이슈 생성
+5. 이슈에 라벨이 붙는지 확인
+6. `Eval failure` 이슈 생성 후 eval 추가 PR 확인
+7. `Self Improve Docs Proposal` dry-run 실행
 
-## 8. 문제 해결
+## 8. 자주 헷갈리는 token 구분
+
+- `OPENAI_API_KEY`: 답변 생성, eval 응답 생성, 개선안 작성 등 AI 모델 호출에 사용합니다.
+- `GITHUB_TOKEN`: GitHub Actions가 기본 제공하는 토큰입니다. 이슈 라벨링처럼 단순한 작업에는 충분합니다.
+- `BOT_GITHUB_TOKEN`: 자동화가 만든 PR에도 일반 PR 체크가 돌게 하려면 필요합니다.
+
+## 9. 문제 해결
+
+### 자동 PR의 체크가 `action_required`로 멈춤
+
+가능한 원인:
+
+- PR이 기본 `GITHUB_TOKEN` 또는 `github-actions[bot]`으로 만들어졌습니다.
+- `BOT_GITHUB_TOKEN` secret이 없거나 권한이 부족합니다.
+
+해결:
+
+1. `BOT_GITHUB_TOKEN` secret을 추가합니다.
+2. 기존 bot PR은 닫습니다.
+3. 해당 workflow를 다시 실행해 새 PR을 만듭니다.
 
 ### Issue Triage가 라벨을 못 붙임
 
@@ -166,4 +193,4 @@ python -m maintainer_bot.cli sync-labels --repo OWNER/REPO
 
 - `OPENAI_API_KEY` secret이 있는지
 - `OPENAI_MODEL` variable 값이 올바른지
-- 로컬에서 `python -m maintainer_bot.cli doctor --require-api-key`가 통과하는지
+- 로컬에서 `python -m self_maintainer_bot.cli doctor --require-api-key`가 통과하는지

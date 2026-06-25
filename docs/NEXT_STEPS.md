@@ -16,8 +16,8 @@
 ```powershell
 cd C:\path\to\self-improving-maintainer-bot
 python -m pip install -e .
-python -m maintainer_bot.cli doctor
-python -m maintainer_bot.cli smoke-check
+python -m self_maintainer_bot.cli doctor
+python -m self_maintainer_bot.cli smoke-check
 ```
 
 `doctor`는 필수 파일과 환경을 확인합니다.
@@ -33,7 +33,7 @@ python -m maintainer_bot.cli smoke-check
 API 키까지 강제 확인하려면:
 
 ```bash
-python -m maintainer_bot.cli doctor --require-api-key
+python -m self_maintainer_bot.cli doctor --require-api-key
 ```
 
 ## Phase 1. GitHub 공개 레포 만들기
@@ -53,6 +53,7 @@ git push -u origin main
 3. GitHub Actions가 켜져 있는지 확인합니다.
 4. 수동으로 `Sync Labels` workflow를 한 번 실행합니다.
 5. `Docs Bot Eval` workflow를 수동으로 dry-run 실행합니다.
+6. 자동 PR workflow를 쓸 예정이면 `BOT_GITHUB_TOKEN` repository secret을 추가합니다.
 
 자세한 설정은 `docs/GITHUB_SETUP.md`를 따르세요.
 
@@ -86,18 +87,18 @@ git push -u origin main
 - `question`
 - `security`
 
-라벨 규칙은 `src/maintainer_bot/triage.py`에 있습니다.
+라벨 규칙은 `src/self_maintainer_bot/triage.py`에 있습니다.
 
 로컬에서 확인:
 
 ```bash
-python -m maintainer_bot.cli triage-issue --title "Docs typo in README" --body "Installation guide has a typo"
+python -m self_maintainer_bot.cli triage-issue --title "Docs typo in README" --body "Installation guide has a typo"
 ```
 
 GitHub label 생성/수정은 다음 명령으로도 수동 실행할 수 있습니다.
 
 ```bash
-python -m maintainer_bot.cli sync-labels --repo OWNER/REPO
+python -m self_maintainer_bot.cli sync-labels --repo OWNER/REPO
 ```
 
 이 명령은 `GITHUB_TOKEN` 환경 변수가 필요합니다.
@@ -112,6 +113,8 @@ python -m maintainer_bot.cli sync-labels --repo OWNER/REPO
 4. `Docs Bot Eval`을 다시 실행합니다.
 
 `Self Improve Docs Proposal` workflow는 수동 실행 전용입니다.
+
+자동 PR을 만들려면 `BOT_GITHUB_TOKEN` secret이 필요합니다. 이 secret이 없으면 workflow는 proposal 파일을 만들 수는 있지만 PR 생성 단계는 건너뜁니다.
 
 권장 사용 순서:
 
@@ -133,10 +136,10 @@ python -m maintainer_bot.cli sync-labels --repo OWNER/REPO
 매주 한 번 다음 루틴을 반복합니다.
 
 ```bash
-python -m maintainer_bot.cli smoke-check
-python -m maintainer_bot.cli eval-docs --dry-run
-python -m maintainer_bot.cli eval-docs
-python -m maintainer_bot.cli propose-improvement
+python -m self_maintainer_bot.cli smoke-check
+python -m self_maintainer_bot.cli eval-docs --dry-run
+python -m self_maintainer_bot.cli eval-docs
+python -m self_maintainer_bot.cli propose-improvement
 ```
 
 실패 케이스가 나오면 다음 순서로 처리합니다.

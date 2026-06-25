@@ -4,9 +4,9 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from maintainer_bot.config import Settings
-from maintainer_bot.docs_eval import EvalResult
-from maintainer_bot.llm import LlmConfig, call_openai_text
+from self_maintainer_bot.config import Settings
+from self_maintainer_bot.docs_eval import EvalResult
+from self_maintainer_bot.llm import LlmConfig, call_openai_text
 
 
 def latest_eval_report(runs_dir: Path) -> Path:
