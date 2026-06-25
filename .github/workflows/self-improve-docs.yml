@@ -2,15 +2,6 @@ name: Self Improve Docs Proposal
 
 on:
   workflow_dispatch:
-    inputs:
-      use_openai:
-        description: "Use OPENAI_API_KEY secret for proposal generation"
-        required: true
-        default: "false"
-        type: choice
-        options:
-          - "false"
-          - "true"
 
 permissions:
   contents: write
@@ -34,26 +25,10 @@ jobs:
           python -m pip install -e .
 
       - name: Run eval
-        if: inputs.use_openai == 'false'
         run: python -m self_maintainer_bot.cli eval-docs --dry-run --fail-under 0
 
-      - name: Run eval with OpenAI
-        if: inputs.use_openai == 'true'
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.5' }}
-        run: python -m self_maintainer_bot.cli eval-docs --fail-under 0
-
       - name: Write proposal
-        if: inputs.use_openai == 'false'
         run: python -m self_maintainer_bot.cli propose-improvement --dry-run
-
-      - name: Write proposal with OpenAI
-        if: inputs.use_openai == 'true'
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.5' }}
-        run: python -m self_maintainer_bot.cli propose-improvement
 
       - name: Create pull request
         if: env.BOT_GITHUB_TOKEN != ''

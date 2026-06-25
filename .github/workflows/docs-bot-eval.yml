@@ -3,15 +3,6 @@ name: Docs Bot Eval
 on:
   pull_request:
   workflow_dispatch:
-    inputs:
-      use_openai:
-        description: "Use OPENAI_API_KEY secret instead of dry-run mode"
-        required: true
-        default: "false"
-        type: choice
-        options:
-          - "false"
-          - "true"
 
 permissions:
   contents: read
@@ -31,16 +22,8 @@ jobs:
           python -m pip install -U pip
           python -m pip install -e .
 
-      - name: Run dry-run eval for pull requests
-        if: github.event_name == 'pull_request' || inputs.use_openai == 'false'
+      - name: Run local dry-run eval
         run: python -m self_maintainer_bot.cli eval-docs --dry-run
-
-      - name: Run OpenAI eval for trusted manual runs
-        if: github.event_name == 'workflow_dispatch' && inputs.use_openai == 'true'
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.5' }}
-        run: python -m self_maintainer_bot.cli eval-docs
 
       - name: Upload eval reports
         if: always()

@@ -7,9 +7,10 @@
 1. 새 이슈와 PR에서 봇이 틀렸거나 부족했던 사례를 찾습니다.
 2. 그 사례를 `evals/docs_qa.jsonl`에 추가합니다.
 3. `python -m self_maintainer_bot.cli eval-docs`를 실행합니다.
-4. 실패가 있으면 `python -m self_maintainer_bot.cli propose-improvement`를 실행합니다.
-5. 생성된 `proposals/docs-improvement-plan.md`를 검토합니다.
-6. 필요한 문서/프롬프트/eval 변경만 PR로 올립니다.
+4. 실패가 있거나 개선 후보가 있으면 `python -m self_maintainer_bot.cli codex-local-loop --scope docs`를 실행합니다.
+5. 생성된 `runs/codex-tasks/` task를 검토합니다.
+6. 필요한 경우 `.\scripts\codex-local-loop.ps1 -Scope docs -Execute`로 로컬 Codex를 실행합니다.
+7. 변경 diff를 사람이 확인한 뒤 PR로 올립니다.
 
 자동화가 직접 PR을 열게 하려면 GitHub repository secret `BOT_GITHUB_TOKEN`을 먼저 설정합니다. 이 token은 OpenAI API 호출용이 아니라 GitHub PR 생성용입니다.
 

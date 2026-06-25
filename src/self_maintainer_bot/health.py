@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from self_maintainer_bot.config import Settings
 from self_maintainer_bot.docs_eval import run_docs_eval
 from self_maintainer_bot.eval_store import validate_eval_file
+from self_maintainer_bot.target_repo import target_status
 from self_maintainer_bot.triage import suggest_labels
 
 
@@ -32,12 +33,26 @@ def doctor_checks(settings: Settings) -> list[Check]:
             detail=f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
         ),
         Check(
-            name="openai-api-key",
+            name="codex-timeout",
             passed=True,
-            detail="configured" if settings.openai_api_key else "optional missing; dry-run mode still works",
+            detail=f"{settings.codex_timeout_seconds}s",
         ),
-        Check(name="openai-model", passed=bool(settings.model), detail=settings.model),
     ]
+    target = target_status(settings)
+    checks.append(
+        Check(
+            name="target-repository",
+            passed=True,
+            detail=target.repository or "self",
+        )
+    )
+    checks.append(
+        Check(
+            name="target-worktree",
+            passed=target.exists if target.configured else True,
+            detail=str(target.root),
+        )
+    )
     for path in required_paths:
         checks.append(
             Check(
@@ -84,19 +99,14 @@ def run_smoke_check(settings: Settings) -> list[Check]:
     return checks
 
 
-def print_checks(checks: list[Check], *, require_api_key: bool = False) -> None:
+def print_checks(checks: list[Check]) -> None:
     for check in checks:
-        passed = check.passed
-        if check.name == "openai-api-key" and require_api_key and check.detail != "configured":
-            passed = False
-        status = "PASS" if passed else "FAIL"
+        status = "PASS" if check.passed else "FAIL"
         print(f"{status} {check.name}: {check.detail}")
 
 
-def checks_passed(checks: list[Check], *, require_api_key: bool = False) -> bool:
+def checks_passed(checks: list[Check]) -> bool:
     for check in checks:
-        if check.name == "openai-api-key" and require_api_key and check.detail != "configured":
-            return False
         if not check.passed:
             return False
     return True

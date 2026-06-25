@@ -7,11 +7,7 @@ python -m self_maintainer_bot.cli doctor
 python -m self_maintainer_bot.cli smoke-check
 ```
 
-API 키까지 강제:
-
-```bash
-python -m self_maintainer_bot.cli doctor --require-api-key
-```
+이 프로젝트의 기본 운영은 `OPENAI_API_KEY` 없이 로컬 Codex 앱을 사용합니다.
 
 ## 로컬 Codex 루프
 
@@ -39,16 +35,17 @@ PowerShell wrapper:
 .\scripts\codex-local-loop.ps1 -Execute
 ```
 
-OpenAI API eval 결과를 먼저 사용:
-
-```powershell
-.\scripts\codex-local-loop.ps1 -ApiEval -Execute
-```
-
 이미 생성된 task 실행:
 
 ```bash
 python -m self_maintainer_bot.cli run-codex-task --task-file runs/codex-tasks/YOUR_TASK.md
+```
+
+## 대상 레포
+
+```bash
+python -m self_maintainer_bot.cli target-status
+python -m self_maintainer_bot.cli prepare-target
 ```
 
 ## 문서 eval

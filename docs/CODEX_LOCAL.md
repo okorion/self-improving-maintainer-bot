@@ -1,10 +1,10 @@
 # Local Codex App Loop
 
-이 문서는 OpenAI API 기반 자동화는 유지하면서, 내 PC의 Codex 앱 로그인 상태를 활용해 로컬 자가 개선 루프를 돌리는 방법입니다.
+이 문서는 `OPENAI_API_KEY` 없이 내 PC의 Codex 앱 로그인 상태를 활용해 로컬 자가 개선 루프를 돌리는 방법입니다.
 
 ## 역할 분리
 
-- GitHub Actions: 공개 레포에서 재현 가능한 기본 자동화입니다. OpenAI API key를 사용할 수 있습니다.
+- GitHub Actions: 공개 레포에서 재현 가능한 dry-run/check/report 자동화입니다.
 - Local Codex: 내 PC에서만 실행하는 선택적 개선 실행기입니다. Codex 앱/CLI의 `Logged in using ChatGPT` 상태를 사용합니다.
 
 GitHub Actions는 로컬 Codex 앱에 접근할 수 없습니다. 그래서 이 기능은 원격 자동 실행이 아니라, 로컬 작업 큐와 실행기입니다.
@@ -60,17 +60,7 @@ python -m self_maintainer_bot.cli run-codex-task --task-file runs/codex-tasks/YO
 
 기본 sandbox는 `workspace-write`입니다. 이 레포 안에서만 수정하게 두는 설정입니다.
 
-## 3. API eval과 함께 실행하기
-
-OpenAI API 기반 eval을 먼저 돌리고 그 결과를 Codex task에 넣으려면:
-
-```powershell
-.\scripts\codex-local-loop.ps1 -ApiEval -Execute
-```
-
-이 경우 `.env` 또는 환경 변수에 `OPENAI_API_KEY`가 필요합니다.
-
-## 4. scope 선택
+## 3. scope 선택
 
 ```powershell
 .\scripts\codex-local-loop.ps1 -Scope docs -Execute
@@ -90,7 +80,7 @@ OpenAI API 기반 eval을 먼저 돌리고 그 결과를 Codex task에 넣으려
 
 코드 수정은 eval과 문서/프롬프트 개선으로 해결되지 않을 때만 사용하세요.
 
-## 5. 결과 확인
+## 4. 결과 확인
 
 Codex 실행 후 wrapper가 자동으로 다음 검증을 수행합니다.
 
@@ -108,7 +98,7 @@ runs/codex-last-message.md
 
 이 파일들은 git에 올라가지 않습니다.
 
-## 6. 안전 규칙
+## 5. 안전 규칙
 
 - Codex local loop는 commit, push, PR 생성을 하지 않습니다.
 - 변경 후 사람이 diff를 확인합니다.

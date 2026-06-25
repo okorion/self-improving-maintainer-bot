@@ -9,6 +9,7 @@
 - `docs/OPERATIONS_RUNBOOK.md`: 매일/매주 운영 루틴과 실패 대응
 - `docs/COMMANDS.md`: CLI 명령어 모음
 - `docs/CODEX_LOCAL.md`: 내 PC의 Codex 앱 인증 상태를 활용한 로컬 자가 개선 루프
+- `docs/LOCAL_CODEX_ONLY_SETUP.md`: `OPENAI_API_KEY` 없이 로컬 Codex만 쓰는 설정 매뉴얼
 
 이 프로젝트는 공개 GitHub 저장소에서 바로 시작할 수 있는 **자가 개선형 Maintainer/Docs Bot** 템플릿입니다.
 
@@ -21,7 +22,7 @@
 
 이 구조는 "스스로 main을 고치는 봇"이 아니라, **실패 사례를 평가 데이터로 축적하고 검증된 개선 PR을 여는 봇**입니다.
 
-로컬 PC에서는 Codex 앱/CLI 로그인 상태를 활용한 선택적 실행 루프도 사용할 수 있습니다. GitHub Actions와 OpenAI API 기반 루프는 그대로 유지하고, 복잡한 수정은 로컬 Codex가 작업 명세를 받아 처리하는 구조입니다.
+이 레포의 권장 운영 방식은 `OPENAI_API_KEY` 없이 로컬 Codex 앱/CLI 로그인 상태를 사용하는 것입니다. GitHub Actions는 dry-run eval, 라벨, 요약, PR 생성 같은 재현 가능한 운영 자동화만 담당하고, 모델이 필요한 실제 개선 작업은 내 PC의 Codex가 수행합니다.
 
 ## 1. 빠른 시작
 
@@ -53,38 +54,36 @@ python -m self_maintainer_bot.cli eval-docs --dry-run
 
 `--dry-run`은 OpenAI API를 호출하지 않고, 간단한 로컬 검색 방식으로 동작합니다. 프로젝트 구조와 eval flow를 먼저 확인할 때 사용하세요.
 
-### 1.3. OpenAI API로 실행
+### 1.3. 로컬 Codex 앱 상태 확인
 
-```bash
-copy .env.example .env
+```powershell
+python -m self_maintainer_bot.cli codex-status
 ```
 
-macOS/Linux:
+정상 출력:
 
-```bash
-cp .env.example .env
+```text
+PASS codex-cli: ...
+PASS codex-login: Logged in using ChatGPT
 ```
 
-`.env`에 값을 넣습니다.
+### 1.4. 대상 레포 설정
 
-```env
-OPENAI_API_KEY=your_api_key_here
-OPENAI_MODEL=gpt-5.5
+`.env.example`을 `.env`로 복사한 뒤 `TARGET_REPOSITORY`를 설정합니다.
+
+```powershell
+Copy-Item .env.example .env
+python -m self_maintainer_bot.cli prepare-target
+python -m self_maintainer_bot.cli target-status
 ```
 
-실행:
+### 1.5. GitHub 자동 PR token
 
-```bash
-python -m self_maintainer_bot.cli eval-docs
-```
-
-### 1.4. GitHub 자동 PR token
-
-`OPENAI_API_KEY`는 AI 호출용입니다. 자동화가 GitHub PR을 열고 그 PR에서 정상 체크를 돌리려면 별도의 `BOT_GITHUB_TOKEN` repository secret을 추가하세요.
+자동화가 GitHub PR을 열고 그 PR에서 정상 체크를 돌리려면 `BOT_GITHUB_TOKEN` repository secret을 추가하세요.
 
 `BOT_GITHUB_TOKEN`이 없으면 PR 생성 workflow는 PR을 만들지 않고 notice만 남깁니다. GitHub 기본 `GITHUB_TOKEN`으로 만든 PR은 재귀 실행 방지 때문에 PR 체크가 `action_required`로 멈출 수 있기 때문입니다.
 
-### 1.5. 로컬 Codex 앱 루프
+### 1.6. 로컬 Codex 앱 루프
 
 내 PC의 Codex 앱/CLI 인증 상태를 확인합니다.
 
@@ -92,7 +91,7 @@ python -m self_maintainer_bot.cli eval-docs
 python -m self_maintainer_bot.cli codex-status
 ```
 
-API 호출 없이 eval을 돌리고 Codex 작업 명세만 만들려면:
+eval을 돌리고 Codex 작업 명세만 만들려면:
 
 ```powershell
 python -m self_maintainer_bot.cli codex-local-loop
@@ -128,7 +127,6 @@ self-improving-maintainer-bot/
     cli.py                     # CLI 진입점
     config.py                  # 설정 로딩
     docs_eval.py               # 문서 QA eval 실행
-    llm.py                     # OpenAI Responses API 래퍼
     codex_local.py             # 로컬 Codex task/runner
     reports.py                 # 리포트 저장
     triage.py                  # 이슈 분류 예시
@@ -215,16 +213,16 @@ git push -u origin main
 
 GitHub repository settings에서 Actions를 활성화합니다.
 
-API 기반 workflow를 쓰려면 repository secret을 추가합니다.
+자동 PR workflow를 쓰려면 repository secret을 추가합니다.
 
-- `OPENAI_API_KEY`
+- `BOT_GITHUB_TOKEN`
 
 ## 5. GitHub Actions 동작 방식
 
 ### docs-bot-eval.yml
 
 - `pull_request`: 항상 `--dry-run`으로 실행합니다.
-- `workflow_dispatch`: 수동 실행입니다. 입력값으로 API 사용 여부를 고를 수 있습니다.
+- `workflow_dispatch`: 수동 실행입니다. API key를 쓰지 않습니다.
 
 외부 fork PR에서는 secret을 쓰지 않는 것이 안전합니다.
 

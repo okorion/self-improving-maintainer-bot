@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
 from pathlib import Path
 
 from self_maintainer_bot.config import Settings
 from self_maintainer_bot.docs_eval import EvalResult
-from self_maintainer_bot.llm import LlmConfig, call_openai_text
 
 
 def latest_eval_report(runs_dir: Path) -> Path:
@@ -50,23 +48,8 @@ def write_improvement_proposal(settings: Settings, *, dry_run: bool) -> Path | N
     docs_text = settings.docs_path.read_text(encoding="utf-8")
     prompt = settings.improvement_prompt_path.read_text(encoding="utf-8")
 
-    if dry_run or not settings.openai_api_key:
-        body = render_static_improvement_plan(report_path=report_path, failed=failed)
-    else:
-        user_input = f"""Current documentation:
-
-{docs_text}
-
-Failed eval cases:
-
-{json.dumps([asdict(result) for result in failed], ensure_ascii=False, indent=2)}
-"""
-        body = call_openai_text(
-            api_key=settings.openai_api_key,
-            config=LlmConfig(model=settings.model, reasoning_effort=settings.reasoning_effort),
-            instructions=prompt,
-            user_input=user_input,
-        )
+    _ = docs_text, prompt, dry_run
+    body = render_static_improvement_plan(report_path=report_path, failed=failed)
 
     proposal_path.write_text(body.strip() + "\n", encoding="utf-8", newline="\n")
     return proposal_path
@@ -80,7 +63,10 @@ def render_static_improvement_plan(*, report_path: Path, failed: list[EvalResult
         "",
         "## Summary",
         "",
-        "One or more documentation eval cases failed. Review whether the documentation, prompt, or eval case should change.",
+        (
+            "One or more documentation eval cases failed. Review whether the documentation, "
+            "prompt, or eval case should change."
+        ),
         "",
         "## Failed Cases",
         "",
@@ -102,7 +88,10 @@ def render_static_improvement_plan(*, report_path: Path, failed: list[EvalResult
         [
             "## Recommended Change",
             "",
-            "Start by checking `docs/knowledge.md`. If the expected answer is missing or ambiguous, update the docs first.",
+            (
+                "Start by checking `docs/knowledge.md`. If the expected answer is missing "
+                "or ambiguous, update the docs first."
+            ),
             "",
             "If the docs are clear but the answer is wrong, update `prompts/docs_qa_system.md`.",
             "",

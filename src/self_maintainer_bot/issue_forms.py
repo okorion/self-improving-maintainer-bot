@@ -38,7 +38,11 @@ def parse_eval_issue(body: str) -> EvalIssue:
     case_id = first_present(sections, ["suggested eval id", "eval id", "id"])
     question = first_present(sections, ["user question", "question"])
     required = first_present(sections, ["required answer content", "must include"], required=False)
-    forbidden = first_present(sections, ["forbidden answer content", "must not include"], required=False)
+    forbidden = first_present(
+        sections,
+        ["forbidden answer content", "must not include"],
+        required=False,
+    )
 
     must_include = normalize_assertion_lines(required)
     must_not_include = normalize_assertion_lines(forbidden)

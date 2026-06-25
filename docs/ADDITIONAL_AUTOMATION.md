@@ -2,7 +2,7 @@
 
 This template now includes these maintainer-support workflows.
 
-Workflows that open pull requests require the `BOT_GITHUB_TOKEN` repository secret. This is separate from `OPENAI_API_KEY`: the OpenAI key is for model calls, while `BOT_GITHUB_TOKEN` is for GitHub PR creation. Without it, PR-generating workflows leave a notice and skip PR creation so they do not create blocked `github-actions[bot]` PRs.
+Workflows that open pull requests require the `BOT_GITHUB_TOKEN` repository secret. This project does not require `OPENAI_API_KEY`; model-backed improvement work runs locally through the Codex app. Without `BOT_GITHUB_TOKEN`, PR-generating workflows leave a notice and skip PR creation so they do not create blocked `github-actions[bot]` PRs.
 
 ## PR Summary
 

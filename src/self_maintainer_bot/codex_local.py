@@ -11,6 +11,7 @@ from pathlib import Path
 from self_maintainer_bot.config import Settings
 from self_maintainer_bot.docs_eval import EvalResult, run_docs_eval
 from self_maintainer_bot.reports import latest_eval_report, load_eval_results
+from self_maintainer_bot.target_repo import target_root
 
 
 @dataclass(frozen=True)
@@ -119,6 +120,7 @@ def run_codex_task(
     sandbox: str = "workspace-write",
     full_auto: bool = True,
     skip_verify: bool = False,
+    timeout_seconds: int | None = None,
 ) -> CodexRunResult:
     if sandbox not in {"read-only", "workspace-write"}:
         raise ValueError("Only read-only and workspace-write sandboxes are supported.")
@@ -134,12 +136,15 @@ def run_codex_task(
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     log_path = logs_dir / f"{stamp}-codex-exec.log"
     last_message_path = settings.runs_dir / "codex-last-message.md"
+    work_root = target_root(settings)
+    baseline_dirty = git_changed_files(work_root)
+    timeout = timeout_seconds or settings.codex_timeout_seconds
 
     command = [
         *status.command,
         "exec",
         "--cd",
-        str(settings.root),
+        str(work_root),
         "--sandbox",
         sandbox,
         "--output-last-message",
@@ -152,13 +157,23 @@ def run_codex_task(
     command.append("-")
 
     task_text = task_path.read_text(encoding="utf-8")
-    result = subprocess.run(
-        command,
-        input=task_text,
-        capture_output=True,
-        text=True,
-        cwd=settings.root,
-    )
+    try:
+        result = subprocess.run(
+            command,
+            input=task_text,
+            capture_output=True,
+            text=True,
+            cwd=work_root,
+            timeout=timeout,
+        )
+        returncode = result.returncode
+        stdout = result.stdout.strip()
+        stderr = result.stderr.strip()
+    except subprocess.TimeoutExpired as exc:
+        returncode = 124
+        stdout = (exc.stdout or "").strip() if isinstance(exc.stdout, str) else ""
+        stderr_text = (exc.stderr or "").strip() if isinstance(exc.stderr, str) else ""
+        stderr = f"Codex execution timed out after {timeout} seconds.\n{stderr_text}".strip()
 
     log_path.write_text(
         "\n".join(
@@ -166,16 +181,18 @@ def run_codex_task(
                 "# Codex Local Run Log",
                 "",
                 f"Task: {task_path}",
+                f"Work root: {work_root}",
                 f"Command: {' '.join(command)}",
-                f"Return code: {result.returncode}",
+                f"Timeout seconds: {timeout}",
+                f"Return code: {returncode}",
                 "",
                 "## stdout",
                 "",
-                result.stdout.strip(),
+                stdout,
                 "",
                 "## stderr",
                 "",
-                result.stderr.strip(),
+                stderr,
                 "",
             ]
         ),
@@ -184,11 +201,19 @@ def run_codex_task(
     )
 
     verification_returncode = None
-    if result.returncode == 0 and not skip_verify:
-        verification_returncode = run_local_verification(settings, log_path=log_path)
+    if returncode == 0 and not skip_verify:
+        guard_code = verify_allowed_changes(
+            root=work_root,
+            allowed_paths=allowed_paths_for_scope(scope_from_task(task_path)),
+            baseline_dirty=baseline_dirty,
+            log_path=log_path,
+        )
+        verification_returncode = guard_code
+        if guard_code == 0:
+            verification_returncode = run_local_verification(settings, log_path=log_path)
 
     return CodexRunResult(
-        returncode=result.returncode,
+        returncode=returncode,
         task_path=task_path,
         log_path=log_path,
         last_message_path=last_message_path,
@@ -201,13 +226,13 @@ def run_codex_local_loop(
     *,
     goal: str,
     scope: str,
-    api_eval: bool,
     execute: bool,
     model: str | None = None,
     sandbox: str = "workspace-write",
     skip_verify: bool = False,
+    timeout_seconds: int | None = None,
 ) -> tuple[Path, CodexRunResult | None]:
-    results, report_path, _ = run_docs_eval(settings, dry_run=not api_eval)
+    results, report_path, _ = run_docs_eval(settings, dry_run=True)
     passed = sum(1 for result in results if result.passed)
     print(f"Docs eval: {passed}/{len(results)} passed")
     print(f"Eval report: {report_path}")
@@ -230,6 +255,7 @@ def run_codex_local_loop(
         model=model,
         sandbox=sandbox,
         skip_verify=skip_verify,
+        timeout_seconds=timeout_seconds,
     )
     return task_path, run_result
 
@@ -256,9 +282,10 @@ def render_codex_task(
         "",
         "## Repository",
         "",
-        f"- Root: `{settings.root}`",
-        "- Keep the OpenAI API based automation path intact.",
-        "- Treat this local Codex path as an optional human-approved backend.",
+        f"- Bot root: `{settings.root}`",
+        f"- Work root: `{target_root(settings)}`",
+        "- Do not require `OPENAI_API_KEY`; this project uses local Codex for model work.",
+        "- Treat GitHub Actions as dry-run/check/report automation only.",
         "",
         "## Allowed Scope",
         "",
@@ -343,6 +370,14 @@ def allowed_paths_for_scope(scope: str) -> list[str]:
     return scopes[scope]
 
 
+def scope_from_task(task_path: Path) -> str:
+    name = task_path.name
+    for scope in ["docs", "prompts", "evals", "code", "mixed"]:
+        if f"-{scope}-" in name:
+            return scope
+    return "mixed"
+
+
 def _load_failed_results(
     settings: Settings,
     eval_report_path: Path | None,
@@ -378,3 +413,57 @@ def run_local_verification(settings: Settings, *, log_path: Path) -> int:
             if result.returncode != 0 and final_code == 0:
                 final_code = result.returncode
     return final_code
+
+
+def git_changed_files(root: Path) -> set[str]:
+    if not (root / ".git").exists():
+        return set()
+    result = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    changed: set[str] = set()
+    for line in result.stdout.splitlines():
+        if not line:
+            continue
+        path = line[3:]
+        if " -> " in path:
+            _, path = path.rsplit(" -> ", 1)
+        changed.add(path.replace("\\", "/"))
+    return changed
+
+
+def verify_allowed_changes(
+    *,
+    root: Path,
+    allowed_paths: list[str],
+    baseline_dirty: set[str],
+    log_path: Path,
+) -> int:
+    changed_after = git_changed_files(root)
+    new_changes = changed_after - baseline_dirty
+    disallowed = sorted(
+        path
+        for path in new_changes
+        if not any(
+            path == allowed.rstrip("/") or path.startswith(allowed.rstrip("/") + "/")
+            for allowed in allowed_paths
+        )
+    )
+    with log_path.open("a", encoding="utf-8", newline="\n") as log:
+        log.write("\n## verification: allowed change guard\n\n")
+        if not new_changes:
+            log.write("No new git changes detected.\n")
+        else:
+            log.write("New changed files:\n")
+            for path in sorted(new_changes):
+                log.write(f"- {path}\n")
+        if disallowed:
+            log.write("\nDisallowed files:\n")
+            for path in disallowed:
+                log.write(f"- {path}\n")
+            return 1
+    return 0

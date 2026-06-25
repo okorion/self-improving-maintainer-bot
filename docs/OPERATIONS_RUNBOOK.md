@@ -13,8 +13,8 @@
 3. 생성된 eval 추가 PR을 리뷰하고 merge합니다.
 4. `python -m self_maintainer_bot.cli smoke-check`를 실행합니다.
 5. `python -m self_maintainer_bot.cli eval-docs`를 실행합니다.
-6. 실패가 있으면 `python -m self_maintainer_bot.cli propose-improvement`를 실행합니다.
-7. proposal을 읽고 사람이 실제 변경 PR을 작성합니다.
+6. 실패가 있으면 `python -m self_maintainer_bot.cli codex-local-loop --scope docs`를 실행합니다.
+7. task를 읽고 필요하면 로컬 Codex로 수정한 뒤 사람이 실제 변경 PR을 작성합니다.
 
 ## 릴리즈 전
 
@@ -24,11 +24,11 @@ python -m self_maintainer_bot.cli eval-docs --dry-run
 python -m self_maintainer_bot.cli doctor
 ```
 
-API mode를 릴리즈 게이트로 쓰는 경우:
+로컬 Codex 루프까지 확인하는 경우:
 
 ```bash
-python -m self_maintainer_bot.cli doctor --require-api-key
-python -m self_maintainer_bot.cli eval-docs
+python -m self_maintainer_bot.cli codex-status
+python -m self_maintainer_bot.cli codex-local-loop --scope docs
 ```
 
 ## 실패 대응

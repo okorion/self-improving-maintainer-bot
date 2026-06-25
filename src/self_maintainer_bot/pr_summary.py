@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from self_maintainer_bot.config import Settings
 from self_maintainer_bot.github_api import upsert_issue_comment
-from self_maintainer_bot.llm import LlmConfig, call_openai_text
 
 
 MARKER = "<!-- maintainer-bot:pr-summary -->"
@@ -85,52 +82,14 @@ def render_static_summary(changed_files: list[ChangedFile]) -> str:
     return "\n".join(lines)
 
 
-def render_openai_summary(
-    *,
-    settings: Settings,
-    changed_files: list[ChangedFile],
-    diff: str,
-) -> str:
-    instructions = """You summarize pull requests for maintainers.
-
-Return concise Markdown with:
-
-- Summary
-- Notable files
-- Risks
-- Verification suggestions
-
-Be specific. Do not claim tests passed unless the diff shows it."""
-    user_input = json.dumps(
-        {
-            "changed_files": [item.__dict__ for item in changed_files],
-            "diff": diff,
-        },
-        ensure_ascii=False,
-    )
-    summary = call_openai_text(
-        api_key=settings.openai_api_key or "",
-        config=LlmConfig(model=settings.model, reasoning_effort=settings.reasoning_effort),
-        instructions=instructions,
-        user_input=user_input,
-    )
-    return f"{MARKER}\n## Maintainer Bot PR Summary\n\n{summary.strip()}\n"
-
-
 def write_pr_summary(
     *,
-    settings: Settings,
     base_ref: str,
     head_ref: str,
     output_path: Path,
-    use_openai: bool,
 ) -> Path:
     changed_files = collect_changed_files(base_ref=base_ref, head_ref=head_ref)
-    if use_openai and settings.openai_api_key:
-        diff = collect_diff(base_ref=base_ref, head_ref=head_ref)
-        body = render_openai_summary(settings=settings, changed_files=changed_files, diff=diff)
-    else:
-        body = render_static_summary(changed_files)
+    body = render_static_summary(changed_files)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(body.strip() + "\n", encoding="utf-8", newline="\n")
     return output_path

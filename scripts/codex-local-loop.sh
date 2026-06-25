@@ -17,12 +17,12 @@ if [[ "${EXECUTE:-}" == "1" ]]; then
   args+=(--execute)
 fi
 
-if [[ "${API_EVAL:-}" == "1" ]]; then
-  args+=(--api-eval)
-fi
-
 if [[ -n "${MODEL:-}" ]]; then
   args+=(--model "$MODEL")
+fi
+
+if [[ -n "${TIMEOUT_SECONDS:-}" ]]; then
+  args+=(--timeout-seconds "$TIMEOUT_SECONDS")
 fi
 
 if [[ "${SKIP_VERIFY:-}" == "1" ]]; then

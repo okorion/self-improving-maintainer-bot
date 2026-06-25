@@ -20,13 +20,13 @@ Run documentation evaluation without an API key:
 python -m self_maintainer_bot.cli eval-docs --dry-run
 ```
 
-Run documentation evaluation with the OpenAI API:
+Run documentation evaluation locally:
 
 ```bash
 python -m self_maintainer_bot.cli eval-docs
 ```
 
-The OpenAI API mode requires `OPENAI_API_KEY`.
+The default eval mode does not require `OPENAI_API_KEY`.
 
 ## Self-Improvement Policy
 

@@ -8,7 +8,7 @@ from pathlib import Path
 
 from self_maintainer_bot.config import Settings
 from self_maintainer_bot.eval_store import validate_single_case
-from self_maintainer_bot.llm import LlmConfig, call_openai_text
+from self_maintainer_bot.target_repo import load_target_docs_text
 
 
 @dataclass(frozen=True)
@@ -97,26 +97,8 @@ def answer_question(
     settings: Settings,
     dry_run: bool,
 ) -> str:
-    if dry_run:
-        return dry_run_answer(case.question, docs_text)
-
-    if not settings.openai_api_key:
-        raise RuntimeError("OPENAI_API_KEY is required unless --dry-run is used.")
-
-    user_input = f"""Project documentation:
-
-{docs_text}
-
-Question:
-
-{case.question}
-"""
-    return call_openai_text(
-        api_key=settings.openai_api_key,
-        config=LlmConfig(model=settings.model, reasoning_effort=settings.reasoning_effort),
-        instructions=system_prompt,
-        user_input=user_input,
-    )
+    _ = system_prompt, settings, dry_run
+    return dry_run_answer(case.question, docs_text)
 
 
 def score_answer(case: EvalCase, answer: str) -> EvalResult:
@@ -136,7 +118,7 @@ def score_answer(case: EvalCase, answer: str) -> EvalResult:
 def run_docs_eval(settings: Settings, *, dry_run: bool) -> tuple[list[EvalResult], Path, Path]:
     settings.runs_dir.mkdir(parents=True, exist_ok=True)
 
-    docs_text = settings.docs_path.read_text(encoding="utf-8")
+    docs_text = load_target_docs_text(settings)
     system_prompt = settings.docs_prompt_path.read_text(encoding="utf-8")
     cases = load_eval_cases(settings.evals_path)
 
@@ -160,7 +142,11 @@ def run_docs_eval(settings: Settings, *, dry_run: bool) -> tuple[list[EvalResult
         encoding="utf-8",
         newline="\n",
     )
-    md_path.write_text(render_markdown_report(results, dry_run=dry_run), encoding="utf-8", newline="\n")
+    md_path.write_text(
+        render_markdown_report(results, dry_run=dry_run),
+        encoding="utf-8",
+        newline="\n",
+    )
     return results, jsonl_path, md_path
 
 
@@ -170,7 +156,7 @@ def render_markdown_report(results: list[EvalResult], *, dry_run: bool) -> str:
     lines = [
         "# Documentation Eval Report",
         "",
-        f"- Mode: {'dry-run' if dry_run else 'openai-api'}",
+        "- Mode: local-dry-run",
         f"- Passed: {passed}/{total}",
         "",
     ]

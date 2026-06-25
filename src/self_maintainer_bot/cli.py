@@ -23,6 +23,7 @@ from self_maintainer_bot.issue_forms import parse_eval_issue
 from self_maintainer_bot.pr_summary import comment_pr_summary, write_pr_summary
 from self_maintainer_bot.reports import write_improvement_proposal
 from self_maintainer_bot.status import write_status_dashboard
+from self_maintainer_bot.target_repo import prepare_target_repo, target_status
 from self_maintainer_bot.triage import label_definitions, suggest_labels
 
 
@@ -31,7 +32,11 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     eval_docs = subparsers.add_parser("eval-docs", help="Run documentation QA evals.")
-    eval_docs.add_argument("--dry-run", action="store_true", help="Run without OpenAI API calls.")
+    eval_docs.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run local dry-run evals. This is the default.",
+    )
     eval_docs.add_argument(
         "--fail-under",
         type=float,
@@ -43,7 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
         "propose-improvement",
         help="Create a proposal from the latest documentation eval report.",
     )
-    improve.add_argument("--dry-run", action="store_true", help="Do not call the OpenAI API.")
+    improve.add_argument("--dry-run", action="store_true", help="Keep static proposal behavior.")
 
     subparsers.add_parser(
         "propose-docs-patch",
@@ -69,12 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("validate-evals", help="Validate eval JSONL format and duplicate ids.")
 
-    doctor = subparsers.add_parser("doctor", help="Check local setup and required files.")
-    doctor.add_argument(
-        "--require-api-key",
-        action="store_true",
-        help="Fail when OPENAI_API_KEY is not configured.",
-    )
+    subparsers.add_parser("doctor", help="Check local setup and required files.")
 
     subparsers.add_parser("smoke-check", help="Run local compile, dry-run eval, and triage checks.")
 
@@ -104,7 +104,6 @@ def build_parser() -> argparse.ArgumentParser:
     pr_summary.add_argument("--base-ref", required=True)
     pr_summary.add_argument("--head-ref", required=True)
     pr_summary.add_argument("--output", default="runs/pr-summary.md")
-    pr_summary.add_argument("--use-openai", action="store_true")
 
     comment_summary = subparsers.add_parser(
         "comment-pr-summary",
@@ -121,6 +120,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     status = subparsers.add_parser("update-status", help="Write docs/PROJECT_STATUS.md.")
     status.add_argument("--output", default="docs/PROJECT_STATUS.md")
+
+    subparsers.add_parser("target-status", help="Show target repository configuration.")
+    subparsers.add_parser("prepare-target", help="Clone or update TARGET_REPOSITORY locally.")
 
     subparsers.add_parser(
         "codex-status",
@@ -155,6 +157,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_codex.add_argument("--no-full-auto", action="store_true")
     run_codex.add_argument("--skip-verify", action="store_true")
+    run_codex.add_argument("--timeout-seconds", type=int)
 
     codex_loop = subparsers.add_parser(
         "codex-local-loop",
@@ -170,11 +173,6 @@ def build_parser() -> argparse.ArgumentParser:
         default="docs",
     )
     codex_loop.add_argument(
-        "--api-eval",
-        action="store_true",
-        help="Use OpenAI API eval instead of dry-run eval.",
-    )
-    codex_loop.add_argument(
         "--execute",
         action="store_true",
         help="Execute the generated task with Codex CLI.",
@@ -186,6 +184,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="workspace-write",
     )
     codex_loop.add_argument("--skip-verify", action="store_true")
+    codex_loop.add_argument("--timeout-seconds", type=int)
 
     return parser
 
@@ -195,7 +194,10 @@ def main(argv: list[str] | None = None) -> int:
     settings = load_settings()
 
     if args.command == "eval-docs":
-        results, jsonl_path, md_path = run_docs_eval(settings, dry_run=args.dry_run)
+        results, jsonl_path, md_path = run_docs_eval(
+            settings,
+            dry_run=True,
+        )
         passed = sum(1 for result in results if result.passed)
         total = len(results)
         ratio = passed / total if total else 0.0
@@ -260,8 +262,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "doctor":
         checks = doctor_checks(settings)
-        print_checks(checks, require_api_key=args.require_api_key)
-        return 0 if checks_passed(checks, require_api_key=args.require_api_key) else 1
+        print_checks(checks)
+        return 0 if checks_passed(checks) else 1
 
     if args.command == "smoke-check":
         checks = run_smoke_check(settings)
@@ -295,7 +297,6 @@ def main(argv: list[str] | None = None) -> int:
             base_ref=args.base_ref,
             head_ref=args.head_ref,
             output_path=settings.root / args.output,
-            use_openai=args.use_openai,
         )
         print(f"PR summary written: {path}")
         return 0
@@ -315,6 +316,24 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "update-status":
         path = write_status_dashboard(settings, output_path=settings.root / args.output)
         print(f"Status dashboard written: {path}")
+        return 0
+
+    if args.command == "target-status":
+        status = target_status(settings)
+        print(f"Configured: {'yes' if status.configured else 'no'}")
+        print(f"Repository: {status.repository or '(self)'}")
+        print(f"Default branch: {status.default_branch}")
+        print(f"Root: {status.root}")
+        print(f"Exists: {'yes' if status.exists else 'no'}")
+        print(f"Git repo: {'yes' if status.is_git_repo else 'no'}")
+        print(f"Doc files: {len(status.docs)}")
+        for path in status.docs[:20]:
+            print(f"- {path}")
+        return 0
+
+    if args.command == "prepare-target":
+        path = prepare_target_repo(settings)
+        print(f"Target ready: {path}")
         return 0
 
     if args.command == "codex-status":
@@ -345,6 +364,7 @@ def main(argv: list[str] | None = None) -> int:
             sandbox=args.sandbox,
             full_auto=not args.no_full_auto,
             skip_verify=args.skip_verify,
+            timeout_seconds=args.timeout_seconds,
         )
         print(f"Codex task: {result.task_path}")
         print(f"Codex log: {result.log_path}")
@@ -360,11 +380,11 @@ def main(argv: list[str] | None = None) -> int:
             settings,
             goal=args.goal,
             scope=args.scope,
-            api_eval=args.api_eval,
             execute=args.execute,
             model=args.model,
             sandbox=args.sandbox,
             skip_verify=args.skip_verify,
+            timeout_seconds=args.timeout_seconds,
         )
         if result is None:
             print(f"Run: python -m self_maintainer_bot.cli run-codex-task --task-file {task_path}")

@@ -30,10 +30,10 @@ python -m self_maintainer_bot.cli smoke-check
 
 `OPENAI_API_KEY` 없이도 `smoke-check`는 통과해야 합니다.
 
-API 키까지 강제 확인하려면:
+로컬 Codex 상태까지 확인하려면:
 
 ```bash
-python -m self_maintainer_bot.cli doctor --require-api-key
+python -m self_maintainer_bot.cli codex-status
 ```
 
 ## Phase 1. GitHub 공개 레포 만들기
@@ -66,7 +66,7 @@ git push -u origin main
 - `docs/knowledge.md`에 실제 프로젝트 정책 5-10개 정리
 - `evals/docs_qa.jsonl`에 문서 QA 20개 작성
 - dry-run eval 통과율 확인
-- OpenAI API eval 통과율 확인
+- 로컬 Codex task 생성/실행 루프 확인
 
 추천 eval 작성 기준:
 
@@ -139,7 +139,7 @@ python -m self_maintainer_bot.cli sync-labels --repo OWNER/REPO
 python -m self_maintainer_bot.cli smoke-check
 python -m self_maintainer_bot.cli eval-docs --dry-run
 python -m self_maintainer_bot.cli eval-docs
-python -m self_maintainer_bot.cli propose-improvement
+python -m self_maintainer_bot.cli codex-local-loop --scope docs
 ```
 
 실패 케이스가 나오면 다음 순서로 처리합니다.

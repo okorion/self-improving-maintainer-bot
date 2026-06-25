@@ -2,15 +2,6 @@ name: Docs Patch Candidate
 
 on:
   workflow_dispatch:
-    inputs:
-      use_openai:
-        description: "Use OPENAI_API_KEY for eval before generating patch"
-        required: true
-        default: "false"
-        type: choice
-        options:
-          - "false"
-          - "true"
 
 permissions:
   contents: write
@@ -34,15 +25,7 @@ jobs:
           python -m pip install -e .
 
       - name: Run dry-run eval
-        if: inputs.use_openai == 'false'
         run: python -m self_maintainer_bot.cli eval-docs --dry-run --fail-under 0
-
-      - name: Run OpenAI eval
-        if: inputs.use_openai == 'true'
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.5' }}
-        run: python -m self_maintainer_bot.cli eval-docs --fail-under 0
 
       - name: Propose docs patch
         run: python -m self_maintainer_bot.cli propose-docs-patch

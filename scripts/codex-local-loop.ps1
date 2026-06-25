@@ -1,12 +1,12 @@
 param(
   [switch]$Execute,
-  [switch]$ApiEval,
   [ValidateSet("docs", "prompts", "evals", "code", "mixed")]
   [string]$Scope = "docs",
   [string]$Goal = "Improve the repository based on the latest documentation eval signal.",
   [string]$Model = "",
   [ValidateSet("read-only", "workspace-write")]
   [string]$Sandbox = "workspace-write",
+  [int]$TimeoutSeconds = 0,
   [switch]$SkipVerify
 )
 
@@ -25,12 +25,12 @@ if ($Execute) {
   $argsList += "--execute"
 }
 
-if ($ApiEval) {
-  $argsList += "--api-eval"
-}
-
 if ($Model) {
   $argsList += @("--model", $Model)
+}
+
+if ($TimeoutSeconds -gt 0) {
+  $argsList += @("--timeout-seconds", "$TimeoutSeconds")
 }
 
 if ($SkipVerify) {
