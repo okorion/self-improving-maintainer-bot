@@ -6,9 +6,9 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from maintainer_bot.config import Settings
-from maintainer_bot.eval_store import validate_single_case
-from maintainer_bot.llm import LlmConfig, call_openai_text
+from self_maintainer_bot.config import Settings
+from self_maintainer_bot.eval_store import validate_single_case
+from self_maintainer_bot.llm import LlmConfig, call_openai_text
 
 
 @dataclass(frozen=True)

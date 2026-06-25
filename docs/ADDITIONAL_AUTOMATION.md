@@ -2,6 +2,8 @@
 
 This template now includes these maintainer-support workflows.
 
+Workflows that open pull requests require the `BOT_GITHUB_TOKEN` repository secret. This is separate from `OPENAI_API_KEY`: the OpenAI key is for model calls, while `BOT_GITHUB_TOKEN` is for GitHub PR creation. Without it, PR-generating workflows leave a notice and skip PR creation so they do not create blocked `github-actions[bot]` PRs.
+
 ## PR Summary
 
 Workflow:
@@ -20,7 +22,7 @@ Purpose:
 Local command:
 
 ```bash
-python -m maintainer_bot.cli summarize-pr \
+python -m self_maintainer_bot.cli summarize-pr \
   --base-ref origin/main \
   --head-ref HEAD \
   --output runs/pr-summary.md
@@ -40,14 +42,15 @@ Purpose:
 - Reads failed eval cases.
 - Appends a `Candidate Additions From Failed Evals` section to `docs/knowledge.md`.
 - Opens a PR for human review.
+- Requires `BOT_GITHUB_TOKEN` to open the PR.
 
 This is intentionally conservative. Treat generated text as a draft, not as final documentation.
 
 Local command:
 
 ```bash
-python -m maintainer_bot.cli eval-docs --dry-run --fail-under 0
-python -m maintainer_bot.cli propose-docs-patch
+python -m self_maintainer_bot.cli eval-docs --dry-run --fail-under 0
+python -m self_maintainer_bot.cli propose-docs-patch
 ```
 
 ## Status Dashboard
@@ -63,11 +66,12 @@ Purpose:
 - Runs weekly or manually.
 - Refreshes `docs/PROJECT_STATUS.md`.
 - Shows eval count, latest eval result, and configured workflows.
+- Requires `BOT_GITHUB_TOKEN` to open the PR.
 
 Local command:
 
 ```bash
-python -m maintainer_bot.cli update-status
+python -m self_maintainer_bot.cli update-status
 ```
 
 ## Recommended Activation Order

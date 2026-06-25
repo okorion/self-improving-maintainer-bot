@@ -5,9 +5,9 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from maintainer_bot.config import Settings
-from maintainer_bot.github_api import upsert_issue_comment
-from maintainer_bot.llm import LlmConfig, call_openai_text
+from self_maintainer_bot.config import Settings
+from self_maintainer_bot.github_api import upsert_issue_comment
+from self_maintainer_bot.llm import LlmConfig, call_openai_text
 
 
 MARKER = "<!-- maintainer-bot:pr-summary -->"

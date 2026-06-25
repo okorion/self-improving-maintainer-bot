@@ -25,4 +25,4 @@ jobs:
       - name: Sync labels
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python -m maintainer_bot.cli sync-labels --repo "$GITHUB_REPOSITORY"
+        run: python -m self_maintainer_bot.cli sync-labels --repo "$GITHUB_REPOSITORY"

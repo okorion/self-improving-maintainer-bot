@@ -12,6 +12,8 @@ permissions:
 jobs:
   update-status:
     runs-on: ubuntu-latest
+    env:
+      BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v7
 
@@ -25,10 +27,10 @@ jobs:
           python -m pip install -e .
 
       - name: Run dry-run eval
-        run: python -m maintainer_bot.cli eval-docs --dry-run --fail-under 0
+        run: python -m self_maintainer_bot.cli eval-docs --dry-run --fail-under 0
 
       - name: Update status dashboard
-        run: python -m maintainer_bot.cli update-status
+        run: python -m self_maintainer_bot.cli update-status
 
       - name: Upload eval reports
         if: always()
@@ -39,8 +41,10 @@ jobs:
           if-no-files-found: ignore
 
       - name: Create pull request
+        if: env.BOT_GITHUB_TOKEN != ''
         uses: peter-evans/create-pull-request@v8
         with:
+          token: ${{ env.BOT_GITHUB_TOKEN }}
           commit-message: "docs: update project status dashboard"
           title: "docs: update project status dashboard"
           body: |
@@ -48,3 +52,8 @@ jobs:
           branch: bot/status-dashboard
           add-paths: |
             docs/PROJECT_STATUS.md
+
+      - name: Skip pull request without bot token
+        if: env.BOT_GITHUB_TOKEN == ''
+        run: |
+          echo "::notice title=BOT_GITHUB_TOKEN missing::Set BOT_GITHUB_TOKEN to let generated PRs trigger normal PR checks."

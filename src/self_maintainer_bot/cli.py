@@ -6,17 +6,17 @@ import os
 import sys
 from dataclasses import asdict
 
-from maintainer_bot.config import load_settings
-from maintainer_bot.docs_eval import run_docs_eval
-from maintainer_bot.docs_patch import propose_docs_patch
-from maintainer_bot.eval_store import append_eval_case, validate_eval_file
-from maintainer_bot.github_api import add_issue_labels, sync_labels
-from maintainer_bot.health import checks_passed, doctor_checks, print_checks, run_smoke_check
-from maintainer_bot.issue_forms import parse_eval_issue
-from maintainer_bot.pr_summary import comment_pr_summary, write_pr_summary
-from maintainer_bot.reports import write_improvement_proposal
-from maintainer_bot.status import write_status_dashboard
-from maintainer_bot.triage import label_definitions, suggest_labels
+from self_maintainer_bot.config import load_settings
+from self_maintainer_bot.docs_eval import run_docs_eval
+from self_maintainer_bot.docs_patch import propose_docs_patch
+from self_maintainer_bot.eval_store import append_eval_case, validate_eval_file
+from self_maintainer_bot.github_api import add_issue_labels, sync_labels
+from self_maintainer_bot.health import checks_passed, doctor_checks, print_checks, run_smoke_check
+from self_maintainer_bot.issue_forms import parse_eval_issue
+from self_maintainer_bot.pr_summary import comment_pr_summary, write_pr_summary
+from self_maintainer_bot.reports import write_improvement_proposal
+from self_maintainer_bot.status import write_status_dashboard
+from self_maintainer_bot.triage import label_definitions, suggest_labels
 
 
 def build_parser() -> argparse.ArgumentParser:

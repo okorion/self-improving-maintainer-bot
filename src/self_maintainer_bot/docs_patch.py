@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from maintainer_bot.config import Settings
-from maintainer_bot.docs_eval import EvalResult
-from maintainer_bot.reports import latest_eval_report, load_eval_results
+from self_maintainer_bot.config import Settings
+from self_maintainer_bot.docs_eval import EvalResult
+from self_maintainer_bot.reports import latest_eval_report, load_eval_results
 
 
 SECTION_HEADING = "## Candidate Additions From Failed Evals"

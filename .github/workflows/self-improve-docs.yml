@@ -19,6 +19,8 @@ permissions:
 jobs:
   propose:
     runs-on: ubuntu-latest
+    env:
+      BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v7
 
@@ -33,29 +35,31 @@ jobs:
 
       - name: Run eval
         if: inputs.use_openai == 'false'
-        run: python -m maintainer_bot.cli eval-docs --dry-run --fail-under 0
+        run: python -m self_maintainer_bot.cli eval-docs --dry-run --fail-under 0
 
       - name: Run eval with OpenAI
         if: inputs.use_openai == 'true'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.5' }}
-        run: python -m maintainer_bot.cli eval-docs --fail-under 0
+        run: python -m self_maintainer_bot.cli eval-docs --fail-under 0
 
       - name: Write proposal
         if: inputs.use_openai == 'false'
-        run: python -m maintainer_bot.cli propose-improvement --dry-run
+        run: python -m self_maintainer_bot.cli propose-improvement --dry-run
 
       - name: Write proposal with OpenAI
         if: inputs.use_openai == 'true'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.5' }}
-        run: python -m maintainer_bot.cli propose-improvement
+        run: python -m self_maintainer_bot.cli propose-improvement
 
       - name: Create pull request
+        if: env.BOT_GITHUB_TOKEN != ''
         uses: peter-evans/create-pull-request@v8
         with:
+          token: ${{ env.BOT_GITHUB_TOKEN }}
           commit-message: "docs: add self-improvement proposal"
           title: "docs: add self-improvement proposal"
           body: |
@@ -65,3 +69,8 @@ jobs:
           branch: bot/self-improve-docs
           add-paths: |
             proposals/**
+
+      - name: Skip pull request without bot token
+        if: env.BOT_GITHUB_TOKEN == ''
+        run: |
+          echo "::notice title=BOT_GITHUB_TOKEN missing::Set BOT_GITHUB_TOKEN to let generated PRs trigger normal PR checks."

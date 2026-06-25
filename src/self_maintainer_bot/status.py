@@ -3,10 +3,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
-from maintainer_bot.config import Settings
-from maintainer_bot.docs_eval import load_eval_cases
-from maintainer_bot.eval_store import validate_eval_file
-from maintainer_bot.reports import load_eval_results
+from self_maintainer_bot.config import Settings
+from self_maintainer_bot.docs_eval import load_eval_cases
+from self_maintainer_bot.eval_store import validate_eval_file
+from self_maintainer_bot.reports import load_eval_results
 
 
 def write_status_dashboard(settings: Settings, *, output_path: Path | None = None) -> Path:
