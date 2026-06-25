@@ -24,7 +24,7 @@ jobs:
           python -m pip install -e .
 
       - name: Smoke check
-        run: python -m maintainer_bot.cli smoke-check
+        run: python -m self_maintainer_bot.cli smoke-check
 
       - name: Validate evals
-        run: python -m maintainer_bot.cli validate-evals
+        run: python -m self_maintainer_bot.cli validate-evals

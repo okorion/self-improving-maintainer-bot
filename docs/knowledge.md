@@ -17,13 +17,13 @@ The project requires Python 3.10 or newer.
 Run documentation evaluation without an API key:
 
 ```bash
-python -m maintainer_bot.cli eval-docs --dry-run
+python -m self_maintainer_bot.cli eval-docs --dry-run
 ```
 
 Run documentation evaluation with the OpenAI API:
 
 ```bash
-python -m maintainer_bot.cli eval-docs
+python -m self_maintainer_bot.cli eval-docs
 ```
 
 The OpenAI API mode requires `OPENAI_API_KEY`.

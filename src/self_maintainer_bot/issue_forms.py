@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from maintainer_bot.eval_store import normalize_assertion_lines
+from self_maintainer_bot.eval_store import normalize_assertion_lines
 
 
 @dataclass(frozen=True)

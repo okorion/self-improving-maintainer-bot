@@ -13,6 +13,8 @@ jobs:
   add-eval:
     if: contains(github.event.issue.labels.*.name, 'eval')
     runs-on: ubuntu-latest
+    env:
+      BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -39,16 +41,18 @@ jobs:
 
       - name: Add eval case from issue
         run: |
-          python -m maintainer_bot.cli add-eval-from-issue \
+          python -m self_maintainer_bot.cli add-eval-from-issue \
             --body-file work/issue-body.md \
             --issue-number "${{ github.event.issue.number }}"
 
       - name: Validate eval file
-        run: python -m maintainer_bot.cli validate-evals
+        run: python -m self_maintainer_bot.cli validate-evals
 
       - name: Create pull request
+        if: env.BOT_GITHUB_TOKEN != ''
         uses: peter-evans/create-pull-request@v8
         with:
+          token: ${{ env.BOT_GITHUB_TOKEN }}
           commit-message: "eval: add case from issue #${{ github.event.issue.number }}"
           title: "eval: add case from issue #${{ github.event.issue.number }}"
           body: |
@@ -58,3 +62,8 @@ jobs:
           branch: bot/add-eval-${{ github.event.issue.number }}
           add-paths: |
             evals/docs_qa.jsonl
+
+      - name: Skip pull request without bot token
+        if: env.BOT_GITHUB_TOKEN == ''
+        run: |
+          echo "::notice title=BOT_GITHUB_TOKEN missing::Set BOT_GITHUB_TOKEN to let generated PRs trigger normal PR checks."

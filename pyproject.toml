@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-maintainer-bot = "maintainer_bot.cli:main"
+maintainer-bot = "self_maintainer_bot.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

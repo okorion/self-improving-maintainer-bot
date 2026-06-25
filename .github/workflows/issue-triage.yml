@@ -30,7 +30,7 @@ jobs:
           ISSUE_BODY: ${{ github.event.issue.body }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
-          python -m maintainer_bot.cli apply-issue-labels \
+          python -m self_maintainer_bot.cli apply-issue-labels \
             --repo "$GITHUB_REPOSITORY" \
             --issue-number "$ISSUE_NUMBER" \
             --title "$ISSUE_TITLE" \

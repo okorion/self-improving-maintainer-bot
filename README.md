@@ -45,7 +45,7 @@ python -m pip install -e .
 ### 1.2. API 키 없이 먼저 실행
 
 ```bash
-python -m maintainer_bot.cli eval-docs --dry-run
+python -m self_maintainer_bot.cli eval-docs --dry-run
 ```
 
 `--dry-run`은 OpenAI API를 호출하지 않고, 간단한 로컬 검색 방식으로 동작합니다. 프로젝트 구조와 eval flow를 먼저 확인할 때 사용하세요.
@@ -72,8 +72,14 @@ OPENAI_MODEL=gpt-5.5
 실행:
 
 ```bash
-python -m maintainer_bot.cli eval-docs
+python -m self_maintainer_bot.cli eval-docs
 ```
+
+### 1.4. GitHub 자동 PR token
+
+`OPENAI_API_KEY`는 AI 호출용입니다. 자동화가 GitHub PR을 열고 그 PR에서 정상 체크를 돌리려면 별도의 `BOT_GITHUB_TOKEN` repository secret을 추가하세요.
+
+`BOT_GITHUB_TOKEN`이 없으면 PR 생성 workflow는 PR을 만들지 않고 notice만 남깁니다. GitHub 기본 `GITHUB_TOKEN`으로 만든 PR은 재귀 실행 방지 때문에 PR 체크가 `action_required`로 멈출 수 있기 때문입니다.
 
 ## 2. 프로젝트 구조
 
@@ -92,7 +98,7 @@ self-improving-maintainer-bot/
     improvement_planner.md     # 실패 분석/개선 제안 프롬프트
   policies/
     self_improvement_policy.md # 자동 변경 안전 정책
-  src/maintainer_bot/
+  src/self_maintainer_bot/
     cli.py                     # CLI 진입점
     config.py                  # 설정 로딩
     docs_eval.py               # 문서 QA eval 실행
@@ -137,13 +143,13 @@ self-improving-maintainer-bot/
 ### Step 3. eval 실행
 
 ```bash
-python -m maintainer_bot.cli eval-docs --dry-run
+python -m self_maintainer_bot.cli eval-docs --dry-run
 ```
 
 API를 연결한 뒤:
 
 ```bash
-python -m maintainer_bot.cli eval-docs
+python -m self_maintainer_bot.cli eval-docs
 ```
 
 결과는 `runs/` 아래에 JSONL과 Markdown으로 저장됩니다.
@@ -151,7 +157,7 @@ python -m maintainer_bot.cli eval-docs
 ### Step 4. 실패를 개선 제안으로 바꾸기
 
 ```bash
-python -m maintainer_bot.cli propose-improvement
+python -m self_maintainer_bot.cli propose-improvement
 ```
 
 이 명령은 가장 최근 eval report를 읽고 `proposals/docs-improvement-plan.md`를 생성합니다.

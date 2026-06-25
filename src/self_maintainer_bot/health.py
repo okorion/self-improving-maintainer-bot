@@ -4,10 +4,10 @@ import compileall
 import sys
 from dataclasses import dataclass
 
-from maintainer_bot.config import Settings
-from maintainer_bot.docs_eval import run_docs_eval
-from maintainer_bot.eval_store import validate_eval_file
-from maintainer_bot.triage import suggest_labels
+from self_maintainer_bot.config import Settings
+from self_maintainer_bot.docs_eval import run_docs_eval
+from self_maintainer_bot.eval_store import validate_eval_file
+from self_maintainer_bot.triage import suggest_labels
 
 
 @dataclass(frozen=True)
