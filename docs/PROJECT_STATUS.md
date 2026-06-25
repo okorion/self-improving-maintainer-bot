@@ -1,6 +1,6 @@
 # Project Status
 
-Generated at: 2026-06-25 05:49:27 UTC
+Generated at: 2026-06-25 05:53:57 UTC
 
 ## Eval Coverage
 
@@ -9,7 +9,8 @@ Generated at: 2026-06-25 05:49:27 UTC
 
 ## Latest Eval Report
 
-- No eval report found under `runs/`.
+- Report: `runs/docs-eval-20260625T055357Z.jsonl`
+- Passed: 5/5
 
 ## Automation
 
