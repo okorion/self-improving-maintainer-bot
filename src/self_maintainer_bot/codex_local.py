@@ -275,6 +275,8 @@ def render_codex_task(
         "You are running inside the user's local Codex environment for this repository.",
         "Use the local Codex login/session for reasoning and code editing.",
         "Do not require or print API keys.",
+        "Follow the target repository's AGENTS.md when it exists.",
+        "Write user-facing summaries, commit explanations, and PR guidance in Korean by default.",
         "",
         "## Goal",
         "",
@@ -296,6 +298,7 @@ def render_codex_task(
             "",
             "Do not modify files outside this scope unless the task is impossible without it.",
             "Do not commit, push, create pull requests, or read/print secrets.",
+            "If you describe a commit or PR, write the title and body in Korean.",
             "",
             "## Required Workflow",
             "",
@@ -304,7 +307,7 @@ def render_codex_task(
             "3. Make the smallest useful change within the allowed scope.",
             "4. Run `python -m self_maintainer_bot.cli smoke-check`.",
             "5. Run `python -m self_maintainer_bot.cli validate-evals`.",
-            "6. Finish with a concise summary of files changed, verification, and remaining risk.",
+            "6. Finish in Korean with changed files, verification, and remaining risk.",
             "",
             "## Eval Context",
             "",
@@ -314,7 +317,7 @@ def render_codex_task(
     if eval_report_path:
         lines.append(f"- Latest eval report: `{eval_report_path}`")
     else:
-        lines.append("- No eval report was found. Perform a conservative maintenance scan.")
+        lines.append("- Eval report가 없습니다. 보수적인 유지보수 점검을 수행하세요.")
 
     if failed:
         lines.extend(["", "### Failed Cases", ""])
@@ -323,9 +326,9 @@ def render_codex_task(
                 [
                     f"#### {result.id}",
                     "",
-                    f"- Question: {result.question}",
-                    f"- Missing: {', '.join(result.missing) if result.missing else 'None'}",
-                    f"- Forbidden: {', '.join(result.forbidden) if result.forbidden else 'None'}",
+                    f"- 질문: {result.question}",
+                    f"- 누락: {', '.join(result.missing) if result.missing else '없음'}",
+                    f"- 금지어 포함: {', '.join(result.forbidden) if result.forbidden else '없음'}",
                     "",
                 ]
             )
@@ -333,7 +336,7 @@ def render_codex_task(
         lines.extend(
             [
                 "",
-                "No failing eval cases were found. Prefer no-op or low-risk documentation cleanup.",
+                "실패한 eval case가 없습니다. no-op 또는 낮은 위험의 문서 정리를 선호하세요.",
                 "",
             ]
         )

@@ -57,18 +57,18 @@ def write_improvement_proposal(settings: Settings, *, dry_run: bool) -> Path | N
 
 def render_static_improvement_plan(*, report_path: Path, failed: list[EvalResult]) -> str:
     lines = [
-        "# Documentation Improvement Plan",
+        "# 문서 개선 계획",
         "",
-        f"Source report: `{report_path}`",
+        f"기준 보고서: `{report_path}`",
         "",
-        "## Summary",
+        "## 요약",
         "",
         (
-            "One or more documentation eval cases failed. Review whether the documentation, "
-            "prompt, or eval case should change."
+            "하나 이상의 문서 eval case가 실패했습니다. 문서, 프롬프트, eval case 중 "
+            "무엇을 수정해야 하는지 검토하세요."
         ),
         "",
-        "## Failed Cases",
+        "## 실패 case",
         "",
     ]
 
@@ -77,30 +77,30 @@ def render_static_improvement_plan(*, report_path: Path, failed: list[EvalResult
             [
                 f"### {result.id}",
                 "",
-                f"- Question: {result.question}",
-                f"- Missing: {', '.join(result.missing) if result.missing else 'None'}",
-                f"- Forbidden: {', '.join(result.forbidden) if result.forbidden else 'None'}",
+                f"- 질문: {result.question}",
+                f"- 누락: {', '.join(result.missing) if result.missing else '없음'}",
+                f"- 금지어 포함: {', '.join(result.forbidden) if result.forbidden else '없음'}",
                 "",
             ]
         )
 
     lines.extend(
         [
-            "## Recommended Change",
+            "## 권장 변경",
             "",
             (
-                "Start by checking `docs/knowledge.md`. If the expected answer is missing "
-                "or ambiguous, update the docs first."
+                "`docs/knowledge.md`부터 확인하세요. 기대 답변이 없거나 모호하면 "
+                "문서를 먼저 수정합니다."
             ),
             "",
-            "If the docs are clear but the answer is wrong, update `prompts/docs_qa_system.md`.",
+            "문서가 명확한데 답변이 틀렸다면 `prompts/docs_qa_system.md`를 수정합니다.",
             "",
-            "## Manual Review Checklist",
+            "## 수동 검토 체크리스트",
             "",
-            "- [ ] The change does not delete or weaken eval coverage without explanation.",
-            "- [ ] The change keeps the bot from pushing directly to main.",
-            "- [ ] The change does not expose secrets to external pull requests.",
-            "- [ ] The eval suite was run again after the change.",
+            "- [ ] 설명 없이 eval coverage를 삭제하거나 약화하지 않았습니다.",
+            "- [ ] bot이 main에 직접 push하지 않는 원칙을 유지합니다.",
+            "- [ ] 외부 pull request에 secret을 노출하지 않습니다.",
+            "- [ ] 변경 후 eval suite를 다시 실행했습니다.",
             "",
         ]
     )

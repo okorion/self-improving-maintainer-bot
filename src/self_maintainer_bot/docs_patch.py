@@ -7,7 +7,7 @@ from self_maintainer_bot.docs_eval import EvalResult
 from self_maintainer_bot.reports import latest_eval_report, load_eval_results
 
 
-SECTION_HEADING = "## Candidate Additions From Failed Evals"
+SECTION_HEADING = "## 실패 eval 기반 문서 후보"
 
 
 def propose_docs_patch(settings: Settings) -> Path | None:
@@ -34,7 +34,7 @@ def render_candidate_additions(failed: list[EvalResult]) -> str:
     lines = [
         SECTION_HEADING,
         "",
-        "These entries were generated from failed eval cases. Review and edit them before merge.",
+        "아래 항목은 실패한 eval case에서 생성된 초안입니다. 병합 전에 검토하고 다듬으세요.",
         "",
     ]
 
@@ -43,9 +43,9 @@ def render_candidate_additions(failed: list[EvalResult]) -> str:
             [
                 f"### {result.id}",
                 "",
-                f"Question: {result.question}",
+                f"질문: {result.question}",
                 "",
-                "Required answer content:",
+                "필요한 답변 내용:",
                 "",
             ]
         )

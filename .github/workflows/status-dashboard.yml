@@ -45,10 +45,12 @@ jobs:
         uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ env.BOT_GITHUB_TOKEN }}
-          commit-message: "docs: update project status dashboard"
-          title: "docs: update project status dashboard"
+          commit-message: "[docs] 프로젝트 상태 대시보드 갱신"
+          title: "[docs] 프로젝트 상태 대시보드 갱신"
           body: |
-            Updates the generated project status dashboard.
+            ## 목적
+
+            생성된 프로젝트 상태 대시보드를 최신 eval 결과 기준으로 갱신합니다.
           branch: bot/status-dashboard
           add-paths: |
             docs/PROJECT_STATUS.md
@@ -56,4 +58,4 @@ jobs:
       - name: Skip pull request without bot token
         if: env.BOT_GITHUB_TOKEN == ''
         run: |
-          echo "::notice title=BOT_GITHUB_TOKEN missing::Set BOT_GITHUB_TOKEN to let generated PRs trigger normal PR checks."
+          echo "::notice title=BOT_GITHUB_TOKEN 없음::자동 PR을 생성하려면 BOT_GITHUB_TOKEN을 설정하세요."

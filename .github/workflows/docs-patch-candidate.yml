@@ -35,12 +35,17 @@ jobs:
         uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ env.BOT_GITHUB_TOKEN }}
-          commit-message: "docs: add candidate fixes from failed evals"
-          title: "docs: add candidate fixes from failed evals"
+          commit-message: "[docs] 실패 eval 기반 문서 후보 추가"
+          title: "[docs] 실패 eval 기반 문서 후보 추가"
           body: |
-            This PR adds candidate documentation text generated from failed eval cases.
+            ## 목적
 
-            Review and edit the wording before merging. Do not merge generated wording blindly.
+            실패한 eval case에서 필요한 문서 후보 문구를 추가합니다.
+
+            ## 검토 사항
+
+            - 생성 문구는 초안입니다. 병합 전에 사람이 문장과 위치를 검토하세요.
+            - eval을 약화하거나 삭제하지 않았는지 확인하세요.
           branch: bot/docs-patch-candidate
           add-paths: |
             docs/knowledge.md
@@ -48,4 +53,4 @@ jobs:
       - name: Skip pull request without bot token
         if: env.BOT_GITHUB_TOKEN == ''
         run: |
-          echo "::notice title=BOT_GITHUB_TOKEN missing::Set BOT_GITHUB_TOKEN to let generated PRs trigger normal PR checks."
+          echo "::notice title=BOT_GITHUB_TOKEN 없음::자동 PR을 생성하려면 BOT_GITHUB_TOKEN을 설정하세요."

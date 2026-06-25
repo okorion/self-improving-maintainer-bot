@@ -151,7 +151,7 @@ python -m self_maintainer_bot.cli eval-docs --dry-run --fail-under 0
 python -m self_maintainer_bot.cli propose-docs-patch
 ```
 
-This command edits `docs/knowledge.md`. Review and rewrite the generated candidate section before merge.
+이 명령은 `docs/knowledge.md`를 수정합니다. 병합 전에 생성된 후보 문구를 사람이 검토하고 한국어 기준으로 다듬으세요.
 
 ## Status dashboard
 

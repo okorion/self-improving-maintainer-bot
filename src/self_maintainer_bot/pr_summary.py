@@ -52,31 +52,31 @@ def render_static_summary(changed_files: list[ChangedFile]) -> str:
     total_deletions = sum(item.deletions for item in changed_files)
     lines = [
         MARKER,
-        "## Maintainer Bot PR Summary",
+        "## Maintainer Bot PR 요약",
         "",
-        f"- Files changed: {len(changed_files)}",
-        f"- Additions: {total_additions}",
-        f"- Deletions: {total_deletions}",
+        f"- 변경 파일: {len(changed_files)}",
+        f"- 추가 라인: {total_additions}",
+        f"- 삭제 라인: {total_deletions}",
         "",
-        "### Changed Files",
+        "### 변경 파일",
         "",
     ]
     if not changed_files:
-        lines.append("No file changes detected.")
+        lines.append("감지된 파일 변경이 없습니다.")
     else:
         for item in changed_files[:30]:
             lines.append(f"- `{item.path}` (+{item.additions}/-{item.deletions})")
         if len(changed_files) > 30:
-            lines.append(f"- ...and {len(changed_files) - 30} more files")
+            lines.append(f"- 그 외 {len(changed_files) - 30}개 파일")
 
     lines.extend(
         [
             "",
-            "### Review Checklist",
+            "### 검토 체크리스트",
             "",
-            "- [ ] Eval changes are intentional and not weaker without explanation.",
-            "- [ ] Workflow permission changes are minimal.",
-            "- [ ] Generated proposal files were reviewed before merge.",
+            "- [ ] eval 변경이 의도적이며 설명 없이 약화되지 않았습니다.",
+            "- [ ] workflow 권한 변경은 최소 범위입니다.",
+            "- [ ] 생성된 proposal 파일을 병합 전에 사람이 검토했습니다.",
         ]
     )
     return "\n".join(lines)

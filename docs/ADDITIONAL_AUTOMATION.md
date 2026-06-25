@@ -40,7 +40,7 @@ Purpose:
 
 - Runs documentation evals.
 - Reads failed eval cases.
-- Appends a `Candidate Additions From Failed Evals` section to `docs/knowledge.md`.
+- Appends a `실패 eval 기반 문서 후보` section to `docs/knowledge.md`.
 - Opens a PR for human review.
 - Requires `BOT_GITHUB_TOKEN` to open the PR.
 

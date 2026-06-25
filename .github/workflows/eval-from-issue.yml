@@ -53,12 +53,17 @@ jobs:
         uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ env.BOT_GITHUB_TOKEN }}
-          commit-message: "eval: add case from issue #${{ github.event.issue.number }}"
-          title: "eval: add case from issue #${{ github.event.issue.number }}"
+          commit-message: "[test] 이슈 기반 문서 eval 추가 #${{ github.event.issue.number }}"
+          title: "[test] 이슈 기반 문서 eval 추가 #${{ github.event.issue.number }}"
           body: |
-            Adds a documentation QA eval case from issue #${{ github.event.issue.number }}.
+            ## 목적
 
-            Review the expected and forbidden assertions before merging.
+            이슈 #${{ github.event.issue.number }}에서 제안된 문서 QA eval case를 추가합니다.
+
+            ## 검토 사항
+
+            - 기대 포함 문구가 실제 요구사항을 정확히 표현하는지 확인하세요.
+            - 금지 문구가 너무 넓게 설정되어 정상 답변을 막지 않는지 확인하세요.
           branch: bot/add-eval-${{ github.event.issue.number }}
           add-paths: |
             evals/docs_qa.jsonl
@@ -66,4 +71,4 @@ jobs:
       - name: Skip pull request without bot token
         if: env.BOT_GITHUB_TOKEN == ''
         run: |
-          echo "::notice title=BOT_GITHUB_TOKEN missing::Set BOT_GITHUB_TOKEN to let generated PRs trigger normal PR checks."
+          echo "::notice title=BOT_GITHUB_TOKEN 없음::자동 PR을 생성하려면 BOT_GITHUB_TOKEN을 설정하세요."
