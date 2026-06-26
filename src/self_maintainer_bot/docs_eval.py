@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 
+from self_maintainer_bot.artifacts import unique_artifact_name
 from self_maintainer_bot.config import Settings
 from self_maintainer_bot.eval_store import validate_single_case
 from self_maintainer_bot.target_repo import active_evals_path, load_target_docs_text
@@ -154,9 +154,8 @@ def run_docs_eval(settings: Settings, *, dry_run: bool) -> tuple[list[EvalResult
         )
         results.append(score_answer(case, answer))
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    jsonl_path = settings.runs_dir / f"docs-eval-{timestamp}.jsonl"
-    md_path = settings.runs_dir / f"docs-eval-{timestamp}.md"
+    jsonl_path = settings.runs_dir / unique_artifact_name(settings, "docs-eval", suffix="jsonl")
+    md_path = settings.runs_dir / f"{jsonl_path.stem}.md"
 
     jsonl_path.write_text(
         "\n".join(json.dumps(asdict(result), ensure_ascii=False) for result in results) + "\n",

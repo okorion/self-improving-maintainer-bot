@@ -5,9 +5,9 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 
+from self_maintainer_bot.artifacts import unique_artifact_name
 from self_maintainer_bot.config import Settings
 from self_maintainer_bot.docs_eval import EvalResult, run_docs_eval
 from self_maintainer_bot.reports import latest_eval_report, load_eval_results
@@ -97,8 +97,11 @@ def write_codex_task(
     task_dir = settings.runs_dir / "codex-tasks"
     task_dir.mkdir(parents=True, exist_ok=True)
     if output_path is None:
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        output_path = task_dir / f"{stamp}-{scope}-self-improve.md"
+        output_path = task_dir / unique_artifact_name(
+            settings,
+            f"codex-task-{scope}-self-improve",
+            suffix="md",
+        )
 
     report_path, failed = _load_failed_results(settings, eval_report_path)
     body = render_codex_task(
@@ -134,9 +137,10 @@ def run_codex_task(
 
     logs_dir = settings.runs_dir / "codex-logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    log_path = logs_dir / f"{stamp}-codex-exec.log"
-    last_message_path = settings.runs_dir / "codex-last-message.md"
+    log_path = logs_dir / unique_artifact_name(settings, "codex-exec", suffix="log")
+    last_message_dir = settings.runs_dir / "codex-last-messages"
+    last_message_dir.mkdir(parents=True, exist_ok=True)
+    last_message_path = last_message_dir / f"{log_path.stem}-last-message.md"
     work_root = target_root(settings)
     baseline_dirty = set(git_changed_files(work_root))
     timeout = timeout_seconds or settings.codex_timeout_seconds
