@@ -367,9 +367,13 @@ REDTEAM_DECISION: FAIL
   Push-Location $TargetRoot
   try {
     $inputText = Get-Content -LiteralPath $RedteamPromptPath -Raw -Encoding utf8
-    $inputText | & $codex exec --cd $TargetRoot --sandbox read-only --output-last-message $RedteamLastMessagePath - *>> $LogPath
-    if ($LASTEXITCODE -ne 0) {
-      "Codex red-team review failed with exit code ${LASTEXITCODE}." | Set-Content -LiteralPath $RedteamReportPath -Encoding utf8
+    $script:CodexRedteamExitCode = 0
+    Invoke-WithPublisherEnvCleared {
+      $inputText | & $codex exec --cd $TargetRoot --sandbox read-only --output-last-message $RedteamLastMessagePath - *>> $LogPath
+      $script:CodexRedteamExitCode = $LASTEXITCODE
+    }
+    if ($script:CodexRedteamExitCode -ne 0) {
+      "Codex red-team review failed with exit code $($script:CodexRedteamExitCode)." | Set-Content -LiteralPath $RedteamReportPath -Encoding utf8
       return "FAIL"
     }
   }

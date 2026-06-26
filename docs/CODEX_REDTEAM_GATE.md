@@ -19,6 +19,7 @@ merge queue / auto merge
 ## Policy
 
 - Codex red-team review runs with `--sandbox read-only`.
+- Publisher token environment variables are cleared while Codex red-team review runs.
 - The review must end with `REDTEAM_DECISION: PASS` or `REDTEAM_DECISION: FAIL`.
 - Missing or malformed decision is treated as `FAIL`.
 - R3/proposal-only changes must not reach PR publish.
