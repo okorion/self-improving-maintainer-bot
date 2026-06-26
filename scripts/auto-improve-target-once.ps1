@@ -46,6 +46,24 @@ $RedteamLastMessagePath = Join-Path $LogDir "$RunId-redteam-last-message.md"
 $ReviewResponseSummaryPath = Join-Path $LogDir "$RunId-review-response-summary.md"
 $CommitTemplate = Join-Path $BotRoot "templates\target-auto-commit-message.md"
 $PrTemplate = Join-Path $BotRoot "templates\target-auto-pr-body.md"
+$ReviewResponseCommitTemplate = Join-Path $BotRoot "templates\review-response-commit-message.md"
+
+function New-UnicodeString {
+  param([int[]]$CodePoints)
+  return -join ($CodePoints | ForEach-Object { [string][char]$_ })
+}
+
+function Get-NoneListItem {
+  return "- $(New-UnicodeString @(0xC5C6, 0xC74C))"
+}
+
+function Get-MergeBodyText {
+  return New-UnicodeString @(
+    0xC790, 0xB3D9, 0x20, 0xC790, 0xAC00, 0x20,
+    0xAC1C, 0xC120, 0x20, 0xACB0, 0xACFC, 0xB97C, 0x20,
+    0xBCD1, 0xD569, 0xD569, 0xB2C8, 0xB2E4, 0x002E
+  )
+}
 
 function Write-Log {
   param([string]$Message)
@@ -446,10 +464,10 @@ Decision rules:
 
 Return a concise Markdown report with sections:
 
-- 결론
-- 주요 확인 사항
-- 위험/차단 사유
-- 권장 후속 조치
+- Korean conclusion
+- Key findings
+- Risk/blocking reasons
+- Recommended follow-up
 
 The final line must be exactly one of:
 
@@ -1044,7 +1062,7 @@ function New-TemplateFile {
     $text = $text.Replace("{{$key}}", [string]$Values[$key])
   }
   $temp = New-TemporaryFile
-  Set-Content -LiteralPath $temp -Value $text -Encoding utf8
+  [System.IO.File]::WriteAllText([string]$temp, $text, [System.Text.UTF8Encoding]::new($false))
   return $temp
 }
 
@@ -1237,8 +1255,8 @@ try {
     PUBLISH_MODE = $Risk.publish_mode
     CHANGED_FILE_COUNT = $Risk.changed_file_count
     CHANGED_LINE_COUNT = $Risk.changed_line_count
-    DENIED_FILES = if ($Risk.denied_files.Count -gt 0) { ($Risk.denied_files | ForEach-Object { "- ``$_``" }) -join [Environment]::NewLine } else { "- 없음" }
-    DISALLOWED_FILES = if ($Risk.disallowed_files.Count -gt 0) { ($Risk.disallowed_files | ForEach-Object { "- ``$_``" }) -join [Environment]::NewLine } else { "- 없음" }
+    DENIED_FILES = if ($Risk.denied_files.Count -gt 0) { ($Risk.denied_files | ForEach-Object { "- ``$_``" }) -join [Environment]::NewLine } else { Get-NoneListItem }
+    DISALLOWED_FILES = if ($Risk.disallowed_files.Count -gt 0) { ($Risk.disallowed_files | ForEach-Object { "- ``$_``" }) -join [Environment]::NewLine } else { Get-NoneListItem }
     DIFF_STAT = if ($DiffStat) { $DiffStat } else { "(empty)" }
     DIFF_NUMSTAT = if ($DiffNumstat) { $DiffNumstat } else { "(empty)" }
     PATCH_ARTIFACT = $PatchPath
@@ -1375,12 +1393,7 @@ try {
       }
       $responseCommitFile = New-TemporaryFile
       try {
-        $responseCommitMessage = @"
-[fix] red-team 리뷰 대응
-
-- Codex red-team report의 차단 사유를 반영
-- 자동 자가 개선 PR의 재검토를 위한 보정 커밋 추가
-"@
+        $responseCommitMessage = Get-Content -LiteralPath $ReviewResponseCommitTemplate -Raw -Encoding utf8
         [System.IO.File]::WriteAllText($responseCommitFile, $responseCommitMessage, [System.Text.UTF8Encoding]::new($false))
         Invoke-CommandLine -Command "git commit --trailer `"Co-authored-by: Codex`" -F `"$responseCommitFile`"" -WorkingDirectory $TargetRoot
       }
@@ -1397,8 +1410,8 @@ try {
     Invoke-CommandLine -Command "gh pr checks $prNumber --repo $TargetRepo --watch" -WorkingDirectory $TargetRoot
 
     $headSha = Get-GitOutput -Arguments @("rev-parse", "HEAD") -WorkingDirectory $TargetRoot
-    $mergeArgs = @("pr", "merge", $prNumber, "--repo", $TargetRepo, "--delete-branch", "--match-head-commit", $headSha)
-    $mergeBody = "자동 자가 개선 결과를 병합합니다."
+    $mergeArgs = @("pr", "merge", $prNumber, "--repo", $TargetRepo, "--match-head-commit", $headSha)
+    $mergeBody = Get-MergeBodyText
     if ($MergeMethod -eq "squash") {
       $mergeArgs += @("--squash", "--subject", $title, "--body", $mergeBody)
     }

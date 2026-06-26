@@ -9,5 +9,6 @@ runs/*.jsonl
 runs/*.md
 runs/codex-tasks/
 runs/codex-logs/
+runs/codex-last-messages/
 runs/scheduler/
 targets/
