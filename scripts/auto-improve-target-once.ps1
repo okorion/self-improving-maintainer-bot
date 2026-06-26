@@ -33,7 +33,7 @@ $env:Path = @(
 ) -join ";"
 
 $BotRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
-$RunId = Get-Date -Format "yyyyMMdd-HHmmss"
+$RunId = Get-Date -Format "yyyyMMdd-HHmmss-fff"
 $LogDir = Join-Path $BotRoot "runs\scheduler"
 $LockDir = Join-Path $LogDir "auto-improve.lock"
 $LogPath = Join-Path $LogDir "$RunId.log"
@@ -122,12 +122,19 @@ function Invoke-CommandLine {
   Write-Log "RUN [$WorkingDirectory] $Command"
   Push-Location $WorkingDirectory
   try {
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     & $env:ComSpec /c $Command *>> $LogPath
-    if ($LASTEXITCODE -ne 0) {
-      throw "Command failed with exit code ${LASTEXITCODE}: $Command"
+    $exitCode = $LASTEXITCODE
+    $ErrorActionPreference = $previousErrorActionPreference
+    if ($exitCode -ne 0) {
+      throw "Command failed with exit code ${exitCode}: $Command"
     }
   }
   finally {
+    if ($null -ne $previousErrorActionPreference) {
+      $ErrorActionPreference = $previousErrorActionPreference
+    }
     Pop-Location
   }
 }
@@ -144,12 +151,19 @@ function Invoke-NativeCommand {
   Write-Log "RUN [$WorkingDirectory] $FilePath $renderedArgs"
   Push-Location $WorkingDirectory
   try {
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     & $FilePath @Arguments *>> $LogPath
-    if ($LASTEXITCODE -ne 0) {
-      throw "Command failed with exit code ${LASTEXITCODE}: $FilePath $renderedArgs"
+    $exitCode = $LASTEXITCODE
+    $ErrorActionPreference = $previousErrorActionPreference
+    if ($exitCode -ne 0) {
+      throw "Command failed with exit code ${exitCode}: $FilePath $renderedArgs"
     }
   }
   finally {
+    if ($null -ne $previousErrorActionPreference) {
+      $ErrorActionPreference = $previousErrorActionPreference
+    }
     Pop-Location
   }
 }
@@ -163,6 +177,8 @@ function Invoke-GitPush {
   Write-Log "RUN [$WorkingDirectory] git push --set-upstream origin $BranchName"
   Push-Location $WorkingDirectory
   try {
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     if ($Token) {
       $encoded = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$Token"))
       git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $encoded" push --set-upstream origin $BranchName *>> $LogPath
@@ -170,11 +186,16 @@ function Invoke-GitPush {
     else {
       git push --set-upstream origin $BranchName *>> $LogPath
     }
-    if ($LASTEXITCODE -ne 0) {
-      throw "git push failed with exit code ${LASTEXITCODE}: $BranchName"
+    $exitCode = $LASTEXITCODE
+    $ErrorActionPreference = $previousErrorActionPreference
+    if ($exitCode -ne 0) {
+      throw "git push failed with exit code ${exitCode}: $BranchName"
     }
   }
   finally {
+    if ($null -ne $previousErrorActionPreference) {
+      $ErrorActionPreference = $previousErrorActionPreference
+    }
     Pop-Location
   }
 }
@@ -195,13 +216,20 @@ function Invoke-GhOutput {
   Write-Log "RUN [$WorkingDirectory] gh $renderedArgs"
   Push-Location $WorkingDirectory
   try {
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     $output = gh @Arguments 2>> $LogPath
-    if ($LASTEXITCODE -ne 0) {
-      throw "gh failed with exit code ${LASTEXITCODE}: $renderedArgs"
+    $exitCode = $LASTEXITCODE
+    $ErrorActionPreference = $previousErrorActionPreference
+    if ($exitCode -ne 0) {
+      throw "gh failed with exit code ${exitCode}: $renderedArgs"
     }
     return ($output -join [Environment]::NewLine)
   }
   finally {
+    if ($null -ne $previousErrorActionPreference) {
+      $ErrorActionPreference = $previousErrorActionPreference
+    }
     Pop-Location
   }
 }
@@ -412,8 +440,11 @@ REDTEAM_DECISION: FAIL
     $inputText = Get-Content -LiteralPath $attemptPromptPath -Raw -Encoding utf8
     $script:CodexRedteamExitCode = 0
     Invoke-WithPublisherEnvCleared {
+      $previousErrorActionPreference = $ErrorActionPreference
+      $ErrorActionPreference = "Continue"
       $inputText | & $codex exec --cd $TargetRoot --sandbox read-only --output-last-message $attemptLastMessagePath - *>> $LogPath
       $script:CodexRedteamExitCode = $LASTEXITCODE
+      $ErrorActionPreference = $previousErrorActionPreference
     }
     if ($script:CodexRedteamExitCode -ne 0) {
       "Codex red-team review failed with exit code $($script:CodexRedteamExitCode)." | Set-Content -LiteralPath $attemptReportPath -Encoding utf8
@@ -571,8 +602,11 @@ $report
     $inputText = Get-Content -LiteralPath $attemptPromptPath -Raw -Encoding utf8
     $script:CodexReviewResponseExitCode = 0
     Invoke-WithPublisherEnvCleared {
+      $previousErrorActionPreference = $ErrorActionPreference
+      $ErrorActionPreference = "Continue"
       $inputText | & $codex exec --cd $TargetRoot --sandbox workspace-write --full-auto --output-last-message $attemptLastMessagePath - *>> $LogPath
       $script:CodexReviewResponseExitCode = $LASTEXITCODE
+      $ErrorActionPreference = $previousErrorActionPreference
     }
     if ($script:CodexReviewResponseExitCode -ne 0) {
       "Codex review response failed with exit code $($script:CodexReviewResponseExitCode)." | Set-Content -LiteralPath $attemptSummaryPath -Encoding utf8
@@ -707,6 +741,8 @@ function Switch-TargetToBaseForReplacement {
   Write-Log "Preparing target worktree for replacement attempt."
   Push-Location $TargetRoot
   try {
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     git switch $BaseBranch *>> $LogPath
     if ($LASTEXITCODE -ne 0) {
       Write-Log "Clean switch to $BaseBranch failed; forcing switch because the current branch only contains generated failed-review changes."
@@ -739,6 +775,9 @@ function Switch-TargetToBaseForReplacement {
     }
   }
   finally {
+    if ($null -ne $previousErrorActionPreference) {
+      $ErrorActionPreference = $previousErrorActionPreference
+    }
     Pop-Location
   }
   Assert-CleanTarget -TargetRoot $TargetRoot
@@ -1037,6 +1076,7 @@ $TargetVerifyCommands = if ($ProfileData -and $ProfileData.verifyCommands) {
 else {
   @("pnpm install --frozen-lockfile || pnpm install", "pnpm check")
 }
+$LockDir = Join-Path $LogDir ("auto-improve-$($TargetRepo.Replace('/', '-')).lock")
 $MaxFiles = if ($ProfileData -and $ProfileData.maxFiles) { [int]$ProfileData.maxFiles } else { 20 }
 $MaxLines = if ($ProfileData -and $ProfileData.maxLines) { [int]$ProfileData.maxLines } else { 500 }
 $ProfileAutoMerge = if ($ProfileData -and $null -ne $ProfileData.autoMerge) { [bool]$ProfileData.autoMerge } else { $false }
@@ -1189,8 +1229,8 @@ try {
     if ($Risk.publish_mode -eq "draft_pull_request") {
       $prArgs += "--draft"
     }
-    $prUrl = gh @prArgs
-    if ($LASTEXITCODE -ne 0 -or -not $prUrl) {
+    $prUrl = Invoke-GhOutput -Arguments $prArgs -WorkingDirectory $TargetRoot
+    if (-not $prUrl) {
       throw "Failed to create PR."
     }
     Write-Log "PR created: $prUrl"
@@ -1199,8 +1239,8 @@ try {
     Remove-Item -LiteralPath $prBodyFile -Force -ErrorAction SilentlyContinue
   }
 
-  $prNumber = gh pr view $prUrl --repo $TargetRepo --json number --jq ".number"
-  if ($LASTEXITCODE -ne 0 -or -not $prNumber) {
+  $prNumber = Invoke-GhOutput -Arguments @("pr", "view", $prUrl, "--repo", $TargetRepo, "--json", "number", "--jq", ".number") -WorkingDirectory $TargetRoot
+  if (-not $prNumber) {
     throw "Failed to resolve PR number."
   }
 

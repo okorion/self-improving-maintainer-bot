@@ -62,6 +62,12 @@ cd "E:\Project Archieve\self-improving-maintainer-bot"
 .\scripts\run-target-auto-improve-loops.ps1 -Iterations 3 -AutoMerge -AllowLocalPublisherAuth
 ```
 
+repo별 루프를 병렬로 실행하고, repo 내부 3회는 직렬로 유지하려면:
+
+```powershell
+.\scripts\run-target-auto-improve-loops.ps1 -Iterations 3 -ParallelProfiles -AutoMerge -AllowLocalPublisherAuth
+```
+
 ## 24시간 스케줄 등록
 
 기본 등록은 10분 뒤 시작하고, 1시간마다 24시간 동안 실행합니다.

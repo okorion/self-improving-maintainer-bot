@@ -77,12 +77,14 @@ Run three serial loops for every overtura target profile:
 
 ```powershell
 .\scripts\run-target-auto-improve-loops.ps1 -Iterations 3 -AutoMerge -AllowLocalPublisherAuth
+.\scripts\run-target-auto-improve-loops.ps1 -Iterations 3 -ParallelProfiles -AutoMerge -AllowLocalPublisherAuth
 ```
 
 Dry-run the same batch before running it:
 
 ```powershell
 .\scripts\run-target-auto-improve-loops.ps1 -Iterations 3 -AutoMerge -AllowLocalPublisherAuth -DryRun
+.\scripts\run-target-auto-improve-loops.ps1 -Iterations 3 -ParallelProfiles -AutoMerge -AllowLocalPublisherAuth -DryRun
 ```
 
 Tune review response and merge waiting:

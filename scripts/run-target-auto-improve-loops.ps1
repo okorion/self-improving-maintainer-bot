@@ -11,6 +11,7 @@ param(
   [int]$ReviewFailureExitCode = 20,
   [int]$MergeWaitTimeoutSeconds = 900,
   [int]$MergePollSeconds = 15,
+  [switch]$ParallelProfiles,
   [switch]$DryRun
 )
 
@@ -31,6 +32,124 @@ if ($Profile.Count -eq 0) {
     ForEach-Object { $_.BaseName }
 }
 
+function New-ChildArguments {
+  param([string]$ProfileName)
+  $arguments = @(
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    $OnceScript,
+    "-Profile",
+    $ProfileName,
+    "-MaxReviewResponses",
+    [string]$MaxReviewResponses,
+    "-ReviewFailureExitCode",
+    [string]$ReviewFailureExitCode,
+    "-MergeWaitTimeoutSeconds",
+    [string]$MergeWaitTimeoutSeconds,
+    "-MergePollSeconds",
+    [string]$MergePollSeconds
+  )
+  if ($Scope) {
+    $arguments += @("-Scope", $Scope)
+  }
+  if ($AutoMerge) {
+    $arguments += "-AutoMerge"
+  }
+  if ($AllowLocalPublisherAuth) {
+    $arguments += "-AllowLocalPublisherAuth"
+  }
+  if ($DryRun) {
+    $arguments += "-DryRun"
+  }
+  return $arguments
+}
+
+if ($ParallelProfiles -and $Profile.Count -gt 1) {
+  $stamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
+  $runDir = Join-Path $BotRoot "runs\scheduler\parallel-$stamp"
+  New-Item -ItemType Directory -Force -Path $runDir | Out-Null
+  $children = @()
+  foreach ($profileName in $Profile) {
+    $outPath = Join-Path $runDir "$profileName.out.log"
+    $errPath = Join-Path $runDir "$profileName.err.log"
+    $arguments = @(
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      $PSCommandPath,
+      "-Profile",
+      $profileName,
+      "-Iterations",
+      [string]$Iterations,
+      "-MaxReviewResponses",
+      [string]$MaxReviewResponses,
+      "-MaxClosedPrReplacements",
+      [string]$MaxClosedPrReplacements,
+      "-ReviewFailureExitCode",
+      [string]$ReviewFailureExitCode,
+      "-MergeWaitTimeoutSeconds",
+      [string]$MergeWaitTimeoutSeconds,
+      "-MergePollSeconds",
+      [string]$MergePollSeconds
+    )
+    if ($Scope) {
+      $arguments += @("-Scope", $Scope)
+    }
+    if ($AutoMerge) {
+      $arguments += "-AutoMerge"
+    }
+    if ($AllowLocalPublisherAuth) {
+      $arguments += "-AllowLocalPublisherAuth"
+    }
+    if ($DryRun) {
+      $arguments += "-DryRun"
+    }
+    Write-Host "=== launching profile=$profileName iterations=$Iterations log=$outPath ==="
+    $job = Start-Job -ScriptBlock {
+      param(
+        [string]$WorkingDirectory,
+        [string[]]$ChildArguments,
+        [string]$OutFile,
+        [string]$ErrFile
+      )
+      Set-Location $WorkingDirectory
+      & powershell @ChildArguments > $OutFile 2> $ErrFile
+      return $LASTEXITCODE
+    } -ArgumentList $BotRoot, $arguments, $outPath, $errPath
+    $children += [pscustomobject]@{
+      Profile = $profileName
+      Job = $job
+      Out = $outPath
+      Err = $errPath
+    }
+  }
+
+  $failed = @()
+  foreach ($child in $children) {
+    Wait-Job -Job $child.Job | Out-Null
+    $received = @(Receive-Job -Job $child.Job)
+    $exitCode = if ($received.Count -gt 0) { [int]$received[-1] } else { 1 }
+    Remove-Job -Job $child.Job -Force
+    if ($exitCode -ne 0) {
+      $failed += [pscustomobject]@{
+        Profile = $child.Profile
+        ExitCode = $exitCode
+        Out = $child.Out
+        Err = $child.Err
+      }
+    }
+    Write-Host "=== completed profile=$($child.Profile) exit=$exitCode out=$($child.Out) err=$($child.Err) ==="
+  }
+  if ($failed.Count -gt 0) {
+    $labels = ($failed | ForEach-Object { "$($_.Profile):$($_.ExitCode)" }) -join ", "
+    throw "Parallel profile loops failed: $labels"
+  }
+  exit 0
+}
+
 foreach ($profileName in $Profile) {
   for ($iteration = 1; $iteration -le $Iterations; $iteration += 1) {
     $replacement = 0
@@ -38,35 +157,7 @@ foreach ($profileName in $Profile) {
       $attemptLabel = $replacement + 1
       $maxAttemptLabel = $MaxClosedPrReplacements + 1
       Write-Host "=== profile=$profileName iteration=$iteration/$Iterations replacement-attempt=$attemptLabel/$maxAttemptLabel ==="
-      $arguments = @(
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        $OnceScript,
-        "-Profile",
-        $profileName,
-        "-MaxReviewResponses",
-        [string]$MaxReviewResponses,
-        "-ReviewFailureExitCode",
-        [string]$ReviewFailureExitCode,
-        "-MergeWaitTimeoutSeconds",
-        [string]$MergeWaitTimeoutSeconds,
-        "-MergePollSeconds",
-        [string]$MergePollSeconds
-      )
-      if ($Scope) {
-        $arguments += @("-Scope", $Scope)
-      }
-      if ($AutoMerge) {
-        $arguments += "-AutoMerge"
-      }
-      if ($AllowLocalPublisherAuth) {
-        $arguments += "-AllowLocalPublisherAuth"
-      }
-      if ($DryRun) {
-        $arguments += "-DryRun"
-      }
+      $arguments = New-ChildArguments -ProfileName $profileName
 
       & powershell @arguments
       $exitCode = $LASTEXITCODE
