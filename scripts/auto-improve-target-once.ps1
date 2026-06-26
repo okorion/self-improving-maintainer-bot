@@ -539,10 +539,10 @@ function Add-RedteamPrComment {
   $body = @"
 ## Codex Red-Team Review
 
-- decision: `$Decision`
-- attempt: `$Attempt`
-- status context: `$RedteamStatusContext`
-- local report: `$ReportPath`
+- decision: ``$Decision``
+- attempt: ``$Attempt``
+- status context: ``$RedteamStatusContext``
+- local report: ``$ReportPath``
 
 $report
 "@
@@ -754,8 +754,8 @@ function Add-ReviewResponsePrComment {
   $body = @"
 ## Codex Review Response
 
-- attempt: `$Attempt`
-- local summary: `$SummaryPath`
+- attempt: ``$Attempt``
+- local summary: ``$SummaryPath``
 
 Changed files:
 
