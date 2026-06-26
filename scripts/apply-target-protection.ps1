@@ -111,7 +111,8 @@ function Invoke-GhJson {
 
   $tmp = New-TemporaryFile
   try {
-    Set-Content -LiteralPath $tmp -Value $json -Encoding utf8
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($tmp, $json, $utf8NoBom)
     $output = gh api -X $Method $Path --input $tmp 2>&1
     if ($LASTEXITCODE -ne 0) {
       throw ($output -join [Environment]::NewLine)
@@ -161,7 +162,6 @@ function New-RulesetBody {
         require_last_push_approval = $true
         required_approving_review_count = 1
         required_review_thread_resolution = $true
-        automatic_copilot_code_review_enabled = $false
         allowed_merge_methods = @("squash")
       }
     },
@@ -259,9 +259,13 @@ function Test-BranchProtection {
   if ($contexts -notcontains $RequiredStatusCheck) { $failures += "missing required status check '$RequiredStatusCheck'" }
   if (-not $reviews.require_code_owner_reviews) { $failures += "code owner review is not required" }
   if (-not $reviews.dismiss_stale_reviews) { $failures += "stale review dismissal is not enabled" }
+  if (-not $reviews.require_last_push_approval) { $failures += "last push approval is not required" }
   if ($reviews.required_approving_review_count -lt 1) { $failures += "required approving review count is below 1" }
+  if (-not $data.enforce_admins.enabled) { $failures += "admin enforcement is not enabled" }
   if (-not $data.required_linear_history.enabled) { $failures += "linear history is not required" }
   if (-not $data.required_conversation_resolution.enabled) { $failures += "conversation resolution is not required" }
+  if ($data.allow_force_pushes.enabled) { $failures += "force pushes are allowed" }
+  if ($data.allow_deletions.enabled) { $failures += "branch deletion is allowed" }
   if ($failures.Count -gt 0) {
     throw ($failures -join "; ")
   }
@@ -284,6 +288,11 @@ function Test-Ruleset {
   }
   $data = $output | ConvertFrom-Json
   $ruleTypes = @($data.rules | ForEach-Object { $_.type })
+  foreach ($requiredRule in @("deletion", "non_fast_forward", "required_linear_history", "pull_request", "required_status_checks")) {
+    if ($ruleTypes -notcontains $requiredRule) {
+      throw "ruleset '$RulesetName' is missing rule '$requiredRule'"
+    }
+  }
   if ($ruleTypes -notcontains "merge_queue") {
     throw "merge_queue rule is not enabled"
   }
