@@ -11,6 +11,7 @@ param(
   [string]$PatchArtifact = "",
   [string]$PublisherTokenEnv = "PUBLISH_GITHUB_TOKEN",
   [string]$PublisherFallbackTokenEnv = "BOT_GITHUB_TOKEN",
+  [switch]$AllowLocalPublisherAuth,
   [ValidateSet("squash", "merge", "rebase")]
   [string]$MergeMethod = "squash",
   [switch]$AutoMerge,
@@ -187,10 +188,31 @@ function Set-PublisherIdentity {
     [Environment]::SetEnvironmentVariable("GH_TOKEN", $token, "Process")
     Write-Log "Publisher identity: $PublisherTokenEnv/$PublisherFallbackTokenEnv token loaded for publish phase."
   }
+  elseif (-not $AllowLocalPublisherAuth) {
+    throw "Publisher token not found. Set $PublisherTokenEnv or $PublisherFallbackTokenEnv, or pass -AllowLocalPublisherAuth for local gh/git fallback."
+  }
   else {
-    Write-Log "WARNING Publisher token not found. Falling back to local gh/git authentication."
+    Write-Log "WARNING Publisher token not found. Falling back to explicit local gh/git authentication."
   }
   return $token
+}
+
+function Invoke-WithPublisherEnvCleared {
+  param([scriptblock]$Script)
+  $names = @($PublisherTokenEnv, $PublisherFallbackTokenEnv, "GH_TOKEN") | Select-Object -Unique
+  $saved = @{}
+  foreach ($name in $names) {
+    $saved[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
+    [Environment]::SetEnvironmentVariable($name, $null, "Process")
+  }
+  try {
+    & $Script
+  }
+  finally {
+    foreach ($name in $names) {
+      [Environment]::SetEnvironmentVariable($name, $saved[$name], "Process")
+    }
+  }
 }
 
 function Get-TargetRoot {
@@ -490,6 +512,7 @@ if ($DryRun) {
   Write-Log "Max lines: $MaxLines"
   Write-Log "Auto merge: $ResolvedAutoMerge"
   Write-Log "Phase: $Phase"
+  Write-Log "Allow local publisher auth: $($AllowLocalPublisherAuth.IsPresent)"
   exit 0
 }
 
@@ -509,8 +532,10 @@ try {
     Apply-PatchArtifact -TargetRoot $TargetRoot -InputPath $PatchArtifact
   }
   else {
-    Invoke-CommandLine -Command "python -m self_maintainer_bot.cli eval-docs --fail-under 0" -WorkingDirectory $BotRoot
-    Invoke-CommandLine -Command "python -m self_maintainer_bot.cli codex-local-loop --scope $Scope --execute" -WorkingDirectory $BotRoot
+    Invoke-WithPublisherEnvCleared {
+      Invoke-CommandLine -Command "python -m self_maintainer_bot.cli eval-docs --fail-under 0" -WorkingDirectory $BotRoot
+      Invoke-CommandLine -Command "python -m self_maintainer_bot.cli codex-local-loop --scope $Scope --execute" -WorkingDirectory $BotRoot
+    }
   }
 
   $changed = Get-ChangedFiles -TargetRoot $TargetRoot

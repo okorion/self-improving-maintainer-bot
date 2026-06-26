@@ -20,7 +20,9 @@ PUBLISH_GITHUB_TOKEN      # publisher 우선 token
 BOT_GITHUB_TOKEN          # publisher fallback token
 ```
 
-`auto-improve-target-once.ps1`는 publish phase에서만 `PUBLISH_GITHUB_TOKEN` 또는 `BOT_GITHUB_TOKEN`을 `GH_TOKEN`으로 설정한다. worker phase에서는 PR 생성, branch push, merge를 실행하지 않는다.
+`auto-improve-target-once.ps1`는 publish phase에서만 `PUBLISH_GITHUB_TOKEN` 또는 `BOT_GITHUB_TOKEN`을 `GH_TOKEN`으로 설정한다. worker phase에서는 process 환경의 publisher token과 `GH_TOKEN`을 지운 상태로 Codex를 실행하고, PR 생성, branch push, merge를 실행하지 않는다.
+
+Publisher token이 없으면 publish phase는 기본적으로 실패한다. 로컬 수동 실험에서만 `-AllowLocalPublisherAuth`를 명시해 기존 `gh auth` fallback을 허용한다.
 
 ## 실행 예시
 
@@ -44,4 +46,4 @@ $env:PUBLISH_GITHUB_TOKEN = "<fine-grained-token-or-app-token>"
 .\scripts\auto-improve-target-once.ps1 -Profile no-js-visual-lab
 ```
 
-로컬 PC에 저장된 `gh auth` 토큰은 완전한 보안 경계가 아니다. 강한 격리가 필요하면 worker는 별도 OS 계정 또는 ephemeral runner에서 실행하고, publisher만 GitHub write token을 갖는다.
+로컬 PC에 저장된 `gh auth` 토큰은 완전한 보안 경계가 아니다. 자동 운영에서는 `-AllowLocalPublisherAuth`를 쓰지 않고, worker는 별도 OS 계정 또는 ephemeral runner에서 실행하고, publisher만 GitHub write token을 갖는 구성을 권장한다.

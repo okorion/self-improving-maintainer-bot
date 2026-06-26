@@ -19,7 +19,7 @@ prepare-target
 ## 기본 전제
 
 - target repo는 `.env`에 설정되어 있어야 합니다.
-- publish phase에는 `PUBLISH_GITHUB_TOKEN` 또는 `BOT_GITHUB_TOKEN`이 PR 생성과 merge 권한을 가져야 합니다.
+- publish phase에는 `PUBLISH_GITHUB_TOKEN` 또는 `BOT_GITHUB_TOKEN`이 PR 생성과 merge 권한을 가져야 합니다. 없으면 기본적으로 publish가 실패하며, 로컬 실험에서만 `-AllowLocalPublisherAuth`로 기존 `gh auth` fallback을 허용합니다.
 - target worktree는 스케줄 시작 시 clean 상태여야 합니다.
 - 기존 open PR이 있으면 먼저 merge 또는 close 여부를 결정해야 합니다.
 
