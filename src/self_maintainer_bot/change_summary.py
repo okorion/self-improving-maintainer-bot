@@ -44,7 +44,8 @@ def summarize_target_change(settings: Settings, *, kind: str = "auto") -> Target
         changed_files = _git_lines(root, ["diff", "--cached", "--name-only"])
     resolved_kind = _resolve_kind(kind, changed_files)
     primary_area = _primary_area(changed_files)
-    subject = _subject_for(resolved_kind, changed_files)
+    diff_text = _combined_diff(root, changed_files)
+    subject = _subject_for(resolved_kind, changed_files, diff_text)
     title = f"[{KIND_PREFIX[resolved_kind]}] {subject}"
     intent = _intent_for(resolved_kind, primary_area)
     file_lines = "\n".join(f"- `{path}`: {_file_summary(root, path, resolved_kind)}" for path in changed_files)
@@ -102,6 +103,12 @@ def _git_lines(root: Path, args: list[str]) -> list[str]:
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
+def _combined_diff(root: Path, changed_files: list[str]) -> str:
+    if not changed_files:
+        return ""
+    return _git_text(root, ["diff", "--", *changed_files])
+
+
 def _resolve_kind(kind: str, changed_files: list[str]) -> str:
     if kind in {"docs", "feat", "style", "refactor"}:
         return kind
@@ -131,7 +138,13 @@ def _primary_area(changed_files: list[str]) -> str:
     return f"{changed_files[0]} 외 {len(changed_files) - 1}개"
 
 
-def _subject_for(kind: str, changed_files: list[str]) -> str:
+def _subject_for(kind: str, changed_files: list[str], diff_text: str = "") -> str:
+    diff_lower = diff_text.lower()
+    path_lower = " ".join(changed_files).lower()
+
+    def has_any(*terms: str) -> bool:
+        return any(term in diff_lower or term in path_lower for term in terms)
+
     if kind == "docs":
         if _has_file(changed_files, "README.md"):
             return "README 안내 보강"
@@ -141,15 +154,39 @@ def _subject_for(kind: str, changed_files: list[str]) -> str:
             return "유지보수 기준 정리"
         return "문서 설명 보강"
     if kind == "style":
+        if has_any("@media", "max-width", "min-width", "container"):
+            return "반응형 레이아웃 정돈"
+        if has_any("focus-visible", ":focus", "aria-"):
+            return "접근성 스타일 정돈"
+        if any(path.startswith("src/") for path in changed_files) and any(
+            path.endswith(".css") for path in changed_files
+        ):
+            return "화면 상태와 레이아웃 정돈"
         if any(path in {"styles.css", "index.html"} or path.startswith("design-system/") for path in changed_files):
             return "화면 스타일 정돈"
         return "시각 표현 정돈"
     if kind == "refactor":
         if any(path.startswith("scripts/") for path in changed_files):
             return "자동화 스크립트 구조 정리"
+        if has_any("usememo", "reduce(", "map(", "type ", "interface ", "const "):
+            return "컴포넌트 데이터 흐름 정리"
+        if any(path.startswith("src/") for path in changed_files):
+            return "앱 구현 구조 정리"
         return "구현 구조 정리"
+    if has_any("period", "bucket", "metric", "insight"):
+        return "기간별 활동 인사이트 추가"
+    if has_any("hint", "progress", "room", "escape"):
+        return "탈출 진행 힌트 기능 추가"
+    if has_any("shader", "preset", "palette"):
+        return "셰이더 프리셋 탐색 추가"
+    if has_any("scroll", "snap", "chapter", "timeline"):
+        return "스크롤 장면 탐색 기능 추가"
+    if has_any("details", "summary", "dialog", "popover", "tab"):
+        return "네이티브 UI 예시 탐색 추가"
+    if has_any("checkbox", "radio", "css-only", "no-js"):
+        return "노JS 인터랙션 예시 추가"
     if any(path in {"index.html", "styles.css"} or path.startswith("src/") for path in changed_files):
-        return "사용자 기능 개선"
+        return "화면 상호작용 기능 추가"
     return "프로젝트 기능 보강"
 
 
