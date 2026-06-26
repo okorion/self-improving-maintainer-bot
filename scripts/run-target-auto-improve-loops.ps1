@@ -19,6 +19,15 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$script:Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+try {
+  [Console]::InputEncoding = $script:Utf8NoBom
+  [Console]::OutputEncoding = $script:Utf8NoBom
+  $OutputEncoding = $script:Utf8NoBom
+}
+catch {
+  $OutputEncoding = $script:Utf8NoBom
+}
 $BotRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 $OnceScript = Join-Path $BotRoot "scripts\auto-improve-target-once.ps1"
 $ScopeStateDir = Join-Path $BotRoot "runs\scheduler\scope-state"

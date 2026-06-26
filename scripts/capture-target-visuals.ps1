@@ -18,6 +18,15 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$script:Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+try {
+  [Console]::InputEncoding = $script:Utf8NoBom
+  [Console]::OutputEncoding = $script:Utf8NoBom
+  $OutputEncoding = $script:Utf8NoBom
+}
+catch {
+  $OutputEncoding = $script:Utf8NoBom
+}
 
 function Get-FreePort {
   $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
@@ -105,6 +114,8 @@ $port = Get-FreePort
 $url = "http://127.0.0.1:$port/"
 $server = $null
 $tempPath = Join-Path ([System.IO.Path]::GetTempPath()) ("codex-$RunId-$($Repo.Replace('/', '-'))-$Phase.png")
+$browserLogPath = Join-Path ([System.IO.Path]::GetTempPath()) ("codex-$RunId-$($Repo.Replace('/', '-'))-$Phase-browser.log")
+$browserOutPath = Join-Path ([System.IO.Path]::GetTempPath()) ("codex-$RunId-$($Repo.Replace('/', '-'))-$Phase-browser.out")
 
 try {
   $server = Start-TargetServer -Root $resolvedRoot -Port $port
@@ -121,8 +132,15 @@ try {
     "--screenshot=$tempPath",
     $url
   )
-  & $browser @browserArgs | Out-Null
-  if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $tempPath -PathType Leaf)) {
+  $browserProcess = Start-Process -FilePath $browser `
+    -ArgumentList $browserArgs `
+    -Wait `
+    -PassThru `
+    -WindowStyle Hidden `
+    -RedirectStandardOutput $browserOutPath `
+    -RedirectStandardError $browserLogPath
+  $browserExitCode = $browserProcess.ExitCode
+  if ($browserExitCode -ne 0 -or -not (Test-Path -LiteralPath $tempPath -PathType Leaf)) {
     Write-Output "SKIPPED screenshot-failed"
     exit 0
   }
@@ -151,4 +169,6 @@ finally {
     Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
   }
   Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $browserLogPath -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $browserOutPath -Force -ErrorAction SilentlyContinue
 }

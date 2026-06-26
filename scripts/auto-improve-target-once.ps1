@@ -27,6 +27,15 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$script:Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+try {
+  [Console]::InputEncoding = $script:Utf8NoBom
+  [Console]::OutputEncoding = $script:Utf8NoBom
+  $OutputEncoding = $script:Utf8NoBom
+}
+catch {
+  $OutputEncoding = $script:Utf8NoBom
+}
 $env:Path = @(
   [Environment]::GetEnvironmentVariable("Path", "User"),
   [Environment]::GetEnvironmentVariable("Path", "Machine"),
@@ -228,11 +237,14 @@ function Invoke-VisualCapture {
     if ($line -like "CAPTURED *") {
       return $line.Substring(9).Trim()
     }
-    return "capture skipped: $line"
+    if ($line -like "SKIPPED *") {
+      return "capture skipped: $($line.Substring(8).Trim())"
+    }
+    return "capture skipped: unexpected capture output"
   }
   catch {
     Write-Log "WARNING Visual capture $Phase failed. $($_.Exception.Message)"
-    return "capture skipped: $($_.Exception.Message)"
+    return "capture skipped: command failed"
   }
 }
 
