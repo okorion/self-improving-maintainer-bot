@@ -3,10 +3,12 @@
 별도 GitHub reviewer 계정을 쓰지 않는 자동 루프에서는 GitHub approval 대신 `codex-redteam` required status check를 사용한다.
 
 - worker: patch artifact 생성
-- publisher: branch push, PR 생성, status/comment 게시, merge queue 요청
+- publisher: branch push, PR 생성, status/comment/reaction 게시, auto-merge 요청
 - Codex red-team: read-only sandbox에서 PR diff를 검토하고 PASS/FAIL report 생성
 
 이 모드는 GitHub의 독립 승인 identity를 제공하지 않는다. 대신 `check`와 `codex-redteam`을 required status check로 두고, red-team FAIL 또는 누락 시 merge를 차단한다.
+
+red-team report는 PR comment로 게시되며, publisher는 각 report comment에 처리 흔적을 남긴다. PASS는 확인 comment와 `+1` reaction을 남기고, FAIL은 `eyes` reaction으로 접수한 뒤 보정 커밋을 push하면 처리 comment와 `+1` reaction을 남긴다.
 
 # Identity Separation
 

@@ -11,14 +11,16 @@ publisher creates PR
 publisher sets codex-redteam=pending on the current head
 Codex CLI reviews the PR diff in read-only mode
 publisher comments the red-team report
+publisher marks the red-team comment as handled with a reaction/comment
 if review fails, Codex responds with a scoped fix commit
 publisher pushes the response commit
+publisher comments how the review was handled
 Codex CLI re-reviews the updated PR
 if the response limit is reached, publisher closes the PR
 batch runner starts a replacement improvement candidate
 publisher sets codex-redteam=success or failure on the current head
 CI check + codex-redteam pass
-merge queue / auto merge
+auto merge
 runner waits until PR state is MERGED
 ```
 
@@ -31,6 +33,7 @@ runner waits until PR state is MERGED
 - A failed red-team review can be handled by a bounded review-response loop.
 - Review response runs with `--sandbox workspace-write --full-auto`, but publisher token environment variables are still cleared.
 - Review response must stay within target `allowPaths` and is reclassified before it can be committed.
+- Every red-team report comment gets a handling trace: PASS gets a short handled comment and `+1`; FAIL gets `eyes`, then a response-handled comment and `+1` after the fix commit is pushed.
 - If the bounded review-response loop still fails, the PR is closed and does not count as a completed iteration.
 - The batch runner retries the same iteration with a fresh improvement candidate up to `MaxClosedPrReplacements`.
 - R3/proposal-only changes must not reach PR publish.
@@ -43,7 +46,7 @@ runner waits until PR state is MERGED
 Use red-team status mode:
 
 ```powershell
-.\scripts\apply-target-protection.ps1 -Mode apply-and-verify -IncludeMergeQueue
+.\scripts\apply-target-protection.ps1 -Mode apply-and-verify
 ```
 
 This requires:

@@ -47,6 +47,8 @@ $ReviewResponseSummaryPath = Join-Path $LogDir "$RunId-review-response-summary.m
 $CommitTemplate = Join-Path $BotRoot "templates\target-auto-commit-message.md"
 $PrTemplate = Join-Path $BotRoot "templates\target-auto-pr-body.md"
 $ReviewResponseCommitTemplate = Join-Path $BotRoot "templates\review-response-commit-message.md"
+$RedteamPassHandlingTemplate = Join-Path $BotRoot "templates\redteam-pass-handling-comment.md"
+$RedteamResponseHandlingTemplate = Join-Path $BotRoot "templates\redteam-response-handling-comment.md"
 
 function New-UnicodeString {
   param([int[]]$CodePoints)
@@ -546,7 +548,60 @@ $report
 "@
   $bodyFile = New-TemporaryFile
   try {
-    [System.IO.File]::WriteAllText($bodyFile, $body, [System.Text.UTF8Encoding]::new($false))
+    [System.IO.File]::WriteAllText($bodyFile.FullName, $body, [System.Text.UTF8Encoding]::new($false))
+    $commentId = Invoke-GhOutput -Arguments @(
+      "api", "-X", "POST", "repos/$Repo/issues/$PrNumber/comments",
+      "-H", "Accept: application/vnd.github+json",
+      "-F", "body=@$($bodyFile.FullName)",
+      "--jq", ".id"
+    )
+    return ($commentId.Trim())
+  }
+  finally {
+    Remove-Item -LiteralPath $bodyFile.FullName -Force -ErrorAction SilentlyContinue
+  }
+}
+
+function Add-IssueCommentReaction {
+  param(
+    [string]$Repo,
+    [string]$CommentId,
+    [string]$Content
+  )
+  if (-not $CommentId) {
+    return
+  }
+  try {
+    Invoke-GhNative -Arguments @(
+      "api", "-X", "POST", "repos/$Repo/issues/comments/$CommentId/reactions",
+      "-H", "Accept: application/vnd.github+json",
+      "-f", "content=$Content"
+    )
+  }
+  catch {
+    Write-Log "WARNING Failed to add reaction '$Content' to comment $CommentId. $($_.Exception.Message)"
+  }
+}
+
+function Add-RedteamHandlingComment {
+  param(
+    [string]$Repo,
+    [string]$PrNumber,
+    [string]$RedteamCommentId,
+    [ValidateSet("pass", "response")]
+    [string]$Outcome,
+    [int]$Attempt,
+    [string]$CommitSha = "",
+    [string]$SummaryPath = ""
+  )
+  $templatePath = if ($Outcome -eq "pass") { $RedteamPassHandlingTemplate } else { $RedteamResponseHandlingTemplate }
+  $bodyFile = New-TemplateFile -TemplatePath $templatePath -Values @{
+    REDTEAM_COMMENT_ID = if ($RedteamCommentId) { $RedteamCommentId } else { "n/a" }
+    ATTEMPT = $Attempt
+    COMMIT_SHA = if ($CommitSha) { $CommitSha } else { "n/a" }
+    SUMMARY_PATH = if ($SummaryPath) { $SummaryPath } else { "n/a" }
+  }
+  try {
     Invoke-GhNative -Arguments @("pr", "comment", $PrNumber, "--repo", $Repo, "--body-file", $bodyFile)
   }
   finally {
@@ -1308,13 +1363,16 @@ try {
         -DiffNumstat $prDiffNumstat `
         -ChangedFiles $prChangedFiles `
         -Attempt $reviewAttempt
-      Add-RedteamPrComment -Repo $TargetRepo -PrNumber $prNumber -Decision $redteamResult.Decision -ReportPath $redteamResult.ReportPath -Attempt $reviewAttempt
+      $redteamCommentId = Add-RedteamPrComment -Repo $TargetRepo -PrNumber $prNumber -Decision $redteamResult.Decision -ReportPath $redteamResult.ReportPath -Attempt $reviewAttempt
       if ($redteamResult.Decision -eq "PASS") {
         Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "success" -Context $RedteamStatusContext -Description "Codex red-team review passed."
+        Add-IssueCommentReaction -Repo $TargetRepo -CommentId $redteamCommentId -Content "+1"
+        Add-RedteamHandlingComment -Repo $TargetRepo -PrNumber $prNumber -RedteamCommentId $redteamCommentId -Outcome "pass" -Attempt $reviewAttempt
         break
       }
 
       Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "failure" -Context $RedteamStatusContext -Description "Codex red-team review failed."
+      Add-IssueCommentReaction -Repo $TargetRepo -CommentId $redteamCommentId -Content "eyes"
       if ($reviewAttempt -ge $maxReviewAttempts) {
         Close-ReviewFailedPullRequest `
           -Repo $TargetRepo `
@@ -1400,8 +1458,11 @@ try {
       finally {
         Remove-Item -LiteralPath $responseCommitFile -Force -ErrorAction SilentlyContinue
       }
+      $responseCommitSha = Get-GitOutput -Arguments @("rev-parse", "HEAD") -WorkingDirectory $TargetRoot
       Invoke-GitPush -BranchName $branchName -WorkingDirectory $TargetRoot -Token $PublisherToken
       Add-ReviewResponsePrComment -Repo $TargetRepo -PrNumber $prNumber -SummaryPath $responseSummaryPath -ChangedFiles $responseChanged -Attempt $reviewAttempt
+      Add-IssueCommentReaction -Repo $TargetRepo -CommentId $redteamCommentId -Content "+1"
+      Add-RedteamHandlingComment -Repo $TargetRepo -PrNumber $prNumber -RedteamCommentId $redteamCommentId -Outcome "response" -Attempt $reviewAttempt -CommitSha $responseCommitSha -SummaryPath $responseSummaryPath
       $reviewAttempt += 1
     }
   }
