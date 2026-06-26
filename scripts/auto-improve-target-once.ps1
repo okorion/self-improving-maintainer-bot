@@ -43,7 +43,7 @@ $env:Path = @(
 ) -join ";"
 
 $BotRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
-$RunId = Get-Date -Format "yyyyMMdd-HHmmss-fff"
+$RunId = "$(Get-Date -Format "yyyyMMdd-HHmmss-fff")-$PID-$(([guid]::NewGuid().ToString("N")).Substring(0, 8))"
 $LogDir = Join-Path $BotRoot "runs\scheduler"
 $LockDir = Join-Path $LogDir "auto-improve.lock"
 $LogPath = Join-Path $LogDir "$RunId.log"
