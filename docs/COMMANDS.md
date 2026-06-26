@@ -160,3 +160,10 @@ python -m self_maintainer_bot.cli update-status
 ```
 
 This writes `docs/PROJECT_STATUS.md`.
+
+## Target repository protection
+
+```powershell
+.\scripts\apply-target-protection.ps1 -Mode verify -IncludeMergeQueue
+.\scripts\apply-target-protection.ps1 -Mode apply-and-verify -IncludeMergeQueue
+```
