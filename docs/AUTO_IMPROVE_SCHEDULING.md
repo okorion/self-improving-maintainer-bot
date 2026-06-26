@@ -8,9 +8,10 @@ prepare-target
   -> eval-docs
   -> codex-local-loop --execute
   -> target 검증
+  -> R0/R1/R2/R3 risk classification
   -> branch 생성
   -> 한국어 commit
-  -> PR 생성
+  -> PR 생성 또는 proposal-only 차단
   -> CI 통과 확인
   -> merge
 ```
@@ -18,7 +19,7 @@ prepare-target
 ## 기본 전제
 
 - target repo는 `.env`에 설정되어 있어야 합니다.
-- `BOT_GITHUB_TOKEN` 또는 `gh auth`가 PR 생성과 merge 권한을 가져야 합니다.
+- publish phase에는 `PUBLISH_GITHUB_TOKEN` 또는 `BOT_GITHUB_TOKEN`이 PR 생성과 merge 권한을 가져야 합니다.
 - target worktree는 스케줄 시작 시 clean 상태여야 합니다.
 - 기존 open PR이 있으면 먼저 merge 또는 close 여부를 결정해야 합니다.
 
@@ -30,6 +31,8 @@ prepare-target
 - merge method: squash
 - overlap policy: 이전 실행이 끝나지 않았으면 다음 실행은 건너뜀
 - allowed publish paths: `README.md`, `CONTRIBUTING.md`, `docs/`
+- R2 publish: draft PR only
+- R3 publish: proposal only, no branch push or PR creation
 
 ## 1회 실행 테스트
 

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from self_maintainer_bot.codex_local import (
     check_codex_status,
+    effective_allowed_paths,
     run_codex_local_loop,
     run_codex_task,
     write_codex_task,
@@ -22,6 +23,7 @@ from self_maintainer_bot.health import checks_passed, doctor_checks, print_check
 from self_maintainer_bot.issue_forms import parse_eval_issue
 from self_maintainer_bot.pr_summary import comment_pr_summary, write_pr_summary
 from self_maintainer_bot.reports import write_improvement_proposal
+from self_maintainer_bot.risk import classify_changes, git_changed_files, write_risk_report
 from self_maintainer_bot.status import write_status_dashboard
 from self_maintainer_bot.target_repo import active_evals_path, prepare_target_repo, target_status
 from self_maintainer_bot.triage import label_definitions, suggest_labels
@@ -185,6 +187,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     codex_loop.add_argument("--skip-verify", action="store_true")
     codex_loop.add_argument("--timeout-seconds", type=int)
+
+    classify = subparsers.add_parser(
+        "classify-target-changes",
+        help="Classify target repository changes as R0/R1/R2/R3.",
+    )
+    classify.add_argument("--scope", choices=["docs", "prompts", "evals", "code", "mixed"], default="docs")
+    classify.add_argument("--output-json")
+    classify.add_argument("--output-md")
+    classify.add_argument("--path", action="append", default=[])
 
     return parser
 
@@ -399,6 +410,26 @@ def main(argv: list[str] | None = None) -> int:
         if result.returncode != 0:
             return result.returncode
         return result.verification_returncode or 0
+
+    if args.command == "classify-target-changes":
+        status = target_status(settings)
+        root = status.root
+        changed = args.path or git_changed_files(root)
+        report = classify_changes(
+            root=root,
+            changed_files=changed,
+            allowed_paths=effective_allowed_paths(settings, args.scope),
+            denied_paths=settings.target_deny_paths,
+            max_files=settings.target_max_files,
+            max_lines=settings.target_max_lines,
+        )
+        write_risk_report(
+            report,
+            json_path=Path(args.output_json) if args.output_json else None,
+            markdown_path=Path(args.output_md) if args.output_md else None,
+        )
+        print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+        return 0
 
     raise AssertionError(f"Unhandled command: {args.command}")
 

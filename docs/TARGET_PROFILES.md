@@ -24,7 +24,7 @@ profile 이름은 다음 두 형식을 지원한다.
 - `evalsPath`: target repo 안의 eval JSONL 경로
 - `verifyCommands`: publish 전에 target worktree에서 실행할 검증 명령
 - `allowPaths`: 자동 PR로 게시할 수 있는 경로
-- `denyPaths`: 자동 PR 게시를 차단할 경로
+- `denyPaths`: R3 proposal-only로 분류하고 자동 PR 게시를 차단할 경로
 - `maxFiles`, `maxLines`: 한 PR 변경량 제한
 - `autoMerge`: profile 기본 자동 merge 여부
 
@@ -48,6 +48,8 @@ migrations/**
 ```
 
 R3 변경이 필요하면 중앙 봇은 코드 변경 대신 계획서나 draft PR을 만들고, 별도 리뷰/승인 절차를 거친다.
+
+R2/R3 판정 규칙은 `docs/RISK_MODEL.md`를 따른다.
 
 ## Overtura profiles
 

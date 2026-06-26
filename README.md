@@ -12,6 +12,10 @@
 - `docs/LOCAL_CODEX_ONLY_SETUP.md`: `OPENAI_API_KEY` 없이 로컬 Codex만 쓰는 설정 매뉴얼
 - `docs/AUTO_IMPROVE_SCHEDULING.md`: 1시간 단위 자동 개선/PR/merge 스케줄링 매뉴얼
 - `docs/TARGET_PROFILES.md`: 여러 target repo를 중앙 control plane에서 다루는 profile 규칙
+- `docs/RISK_MODEL.md`: R0/R1/R2/R3 분류와 publish 정책
+- `docs/IDENTITY_SEPARATION.md`: read/analyze, worker, publisher identity 분리 규칙
+- `docs/LOOP_EXPERIMENTS.md`: target repo별 루프 실험 순서
+- `docs/TARGET_REPOSITORY_PROTECTION.md`: target repo CODEOWNERS, branch protection, merge queue 기준
 
 이 프로젝트는 공개 GitHub 저장소에서 바로 시작할 수 있는 **자가 개선형 Maintainer/Docs Bot** 템플릿입니다.
 

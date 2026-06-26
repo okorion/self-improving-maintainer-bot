@@ -14,10 +14,17 @@
     "DESIGN.md",
     "docs/**",
     "maintainer-bot/**",
-    "src/**"
+    "src/**",
+    "package.json",
+    "pnpm-lock.yaml",
+    "vite.config.*",
+    "tsconfig*.json",
+    "eslint.config.*",
+    "scripts/**"
   ],
   "denyPaths": [
     ".github/workflows/**",
+    ".github/CODEOWNERS",
     "CODEOWNERS",
     ".env*",
     ".npmrc",

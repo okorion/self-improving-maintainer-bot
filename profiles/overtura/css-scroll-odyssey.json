@@ -16,21 +16,23 @@
     "maintainer-bot/**",
     "index.html",
     "styles.css",
-    "design-system/**"
+    "design-system/**",
+    "package.json",
+    "pnpm-lock.yaml",
+    "vite.config.*",
+    "scripts/**"
   ],
   "denyPaths": [
     ".github/workflows/**",
+    ".github/CODEOWNERS",
     "CODEOWNERS",
     ".env*",
     ".npmrc",
     "src/**",
-    "scripts/**",
     "infra/**",
     "terraform/**",
     "k8s/**",
     "migrations/**",
-    "**/*.js",
-    "**/*.ts",
     "*.pem",
     "*.key"
   ],

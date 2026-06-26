@@ -6,6 +6,11 @@ param(
   [string]$TargetRepo = "",
   [string]$BaseBranch = "",
   [string]$BranchPrefix = "codex/auto-improve",
+  [ValidateSet("all", "worker", "publisher")]
+  [string]$Phase = "all",
+  [string]$PatchArtifact = "",
+  [string]$PublisherTokenEnv = "PUBLISH_GITHUB_TOKEN",
+  [string]$PublisherFallbackTokenEnv = "BOT_GITHUB_TOKEN",
   [ValidateSet("squash", "merge", "rebase")]
   [string]$MergeMethod = "squash",
   [switch]$AutoMerge,
@@ -24,6 +29,9 @@ $RunId = Get-Date -Format "yyyyMMdd-HHmmss"
 $LogDir = Join-Path $BotRoot "runs\scheduler"
 $LockDir = Join-Path $LogDir "auto-improve.lock"
 $LogPath = Join-Path $LogDir "$RunId.log"
+$PatchPath = Join-Path $LogDir "$RunId.patch"
+$RiskJsonPath = Join-Path $LogDir "$RunId-risk.json"
+$RiskMarkdownPath = Join-Path $LogDir "$RunId-risk.md"
 $CommitTemplate = Join-Path $BotRoot "templates\target-auto-commit-message.md"
 $PrTemplate = Join-Path $BotRoot "templates\target-auto-pr-body.md"
 
@@ -134,6 +142,57 @@ function Invoke-NativeCommand {
   }
 }
 
+function Invoke-GitPush {
+  param(
+    [string]$BranchName,
+    [string]$WorkingDirectory,
+    [string]$Token
+  )
+  Write-Log "RUN [$WorkingDirectory] git push --set-upstream origin $BranchName"
+  Push-Location $WorkingDirectory
+  try {
+    if ($Token) {
+      $encoded = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("x-access-token:$Token"))
+      git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $encoded" push --set-upstream origin $BranchName *>> $LogPath
+    }
+    else {
+      git push --set-upstream origin $BranchName *>> $LogPath
+    }
+    if ($LASTEXITCODE -ne 0) {
+      throw "git push failed with exit code ${LASTEXITCODE}: $BranchName"
+    }
+  }
+  finally {
+    Pop-Location
+  }
+}
+
+function Get-PublisherToken {
+  $token = [Environment]::GetEnvironmentVariable($PublisherTokenEnv, "Process")
+  if (-not $token) {
+    $token = [Environment]::GetEnvironmentVariable($PublisherTokenEnv, "User")
+  }
+  if (-not $token) {
+    $token = [Environment]::GetEnvironmentVariable($PublisherFallbackTokenEnv, "Process")
+  }
+  if (-not $token) {
+    $token = [Environment]::GetEnvironmentVariable($PublisherFallbackTokenEnv, "User")
+  }
+  return $token
+}
+
+function Set-PublisherIdentity {
+  $token = Get-PublisherToken
+  if ($token) {
+    [Environment]::SetEnvironmentVariable("GH_TOKEN", $token, "Process")
+    Write-Log "Publisher identity: $PublisherTokenEnv/$PublisherFallbackTokenEnv token loaded for publish phase."
+  }
+  else {
+    Write-Log "WARNING Publisher token not found. Falling back to local gh/git authentication."
+  }
+  return $token
+}
+
 function Get-TargetRoot {
   $code = "from self_maintainer_bot.config import load_settings; from self_maintainer_bot.target_repo import target_root; print(target_root(load_settings()))"
   Push-Location $BotRoot
@@ -171,6 +230,53 @@ function Get-ChangedFiles {
   finally {
     Pop-Location
   }
+}
+
+function Get-GitOutput {
+  param(
+    [string[]]$Arguments,
+    [string]$WorkingDirectory
+  )
+  Push-Location $WorkingDirectory
+  try {
+    $output = git @Arguments
+    if ($LASTEXITCODE -ne 0) {
+      throw "git $($Arguments -join ' ') failed."
+    }
+    return ($output -join [Environment]::NewLine)
+  }
+  finally {
+    Pop-Location
+  }
+}
+
+function Save-PatchArtifact {
+  param(
+    [string]$TargetRoot,
+    [string]$OutputPath
+  )
+  Push-Location $TargetRoot
+  try {
+    & $env:ComSpec /c "git diff --binary > `"$OutputPath`""
+    if ($LASTEXITCODE -ne 0) {
+      throw "Failed to write patch artifact: $OutputPath"
+    }
+  }
+  finally {
+    Pop-Location
+  }
+}
+
+function Apply-PatchArtifact {
+  param(
+    [string]$TargetRoot,
+    [string]$InputPath
+  )
+  if (-not (Test-Path -LiteralPath $InputPath -PathType Leaf)) {
+    throw "Patch artifact not found: $InputPath"
+  }
+  Invoke-NativeCommand -FilePath "git" -Arguments @("apply", "--check", $InputPath) -WorkingDirectory $TargetRoot
+  Invoke-NativeCommand -FilePath "git" -Arguments @("apply", $InputPath) -WorkingDirectory $TargetRoot
 }
 
 function Test-PathPattern {
@@ -279,6 +385,14 @@ function Assert-AllowedChanges {
   }
 }
 
+function Invoke-RiskClassifier {
+  param(
+    [string]$Scope
+  )
+  Invoke-CommandLine -Command "python -m self_maintainer_bot.cli classify-target-changes --scope $Scope --output-json `"$RiskJsonPath`" --output-md `"$RiskMarkdownPath`"" -WorkingDirectory $BotRoot
+  return Get-Content -LiteralPath $RiskJsonPath -Raw -Encoding utf8 | ConvertFrom-Json
+}
+
 function New-TemplateFile {
   param(
     [string]$TemplatePath,
@@ -339,7 +453,7 @@ $DeniedPathPatterns = if ($ProfileData -and $ProfileData.denyPaths) {
   Get-StringArray $ProfileData.denyPaths
 }
 else {
-  @(".github/workflows/**", "CODEOWNERS", ".env*", ".npmrc", "infra/**", "terraform/**", "k8s/**", "migrations/**", "**/auth/**", "**/security/**", "*.pem", "*.key")
+  @(".github/workflows/**", ".github/CODEOWNERS", "CODEOWNERS", ".env*", ".npmrc", "infra/**", "terraform/**", "k8s/**", "migrations/**", "**/auth/**", "**/security/**", "*.pem", "*.key")
 }
 $TargetVerifyCommands = if ($ProfileData -and $ProfileData.verifyCommands) {
   Get-StringArray $ProfileData.verifyCommands
@@ -375,6 +489,7 @@ if ($DryRun) {
   Write-Log "Max files: $MaxFiles"
   Write-Log "Max lines: $MaxLines"
   Write-Log "Auto merge: $ResolvedAutoMerge"
+  Write-Log "Phase: $Phase"
   exit 0
 }
 
@@ -384,15 +499,41 @@ try {
   Invoke-CommandLine -Command "python -m self_maintainer_bot.cli prepare-target" -WorkingDirectory $BotRoot
   $TargetRoot = Get-TargetRoot
   Assert-CleanTarget -TargetRoot $TargetRoot
+  $InputCommit = Get-GitOutput -Arguments @("rev-parse", "HEAD") -WorkingDirectory $TargetRoot
+  $ProfileVersion = Get-GitOutput -Arguments @("rev-parse", "HEAD") -WorkingDirectory $BotRoot
 
-  Invoke-CommandLine -Command "python -m self_maintainer_bot.cli eval-docs --fail-under 0" -WorkingDirectory $BotRoot
-  Invoke-CommandLine -Command "python -m self_maintainer_bot.cli codex-local-loop --scope $Scope --execute" -WorkingDirectory $BotRoot
+  if ($Phase -eq "publisher") {
+    if (-not $PatchArtifact) {
+      throw "-Phase publisher requires -PatchArtifact."
+    }
+    Apply-PatchArtifact -TargetRoot $TargetRoot -InputPath $PatchArtifact
+  }
+  else {
+    Invoke-CommandLine -Command "python -m self_maintainer_bot.cli eval-docs --fail-under 0" -WorkingDirectory $BotRoot
+    Invoke-CommandLine -Command "python -m self_maintainer_bot.cli codex-local-loop --scope $Scope --execute" -WorkingDirectory $BotRoot
+  }
 
   $changed = Get-ChangedFiles -TargetRoot $TargetRoot
   if ($changed.Count -eq 0) {
     Write-Log "No target changes detected. Nothing to publish."
     exit 0
   }
+  Save-PatchArtifact -TargetRoot $TargetRoot -OutputPath $PatchPath
+  $Risk = Invoke-RiskClassifier -Scope $Scope
+  Write-Log "Risk classification: max_risk=$($Risk.max_risk) publish_mode=$($Risk.publish_mode)"
+
+  if ($Phase -eq "worker") {
+    Write-Log "Worker phase completed. Patch artifact: $PatchPath"
+    Write-Log "Risk report: $RiskMarkdownPath"
+    exit 0
+  }
+
+  if ($Risk.publish_mode -eq "proposal_only") {
+    Write-Log "Risk policy selected proposal_only. Refusing automatic publish. Patch artifact: $PatchPath"
+    Write-Log "Risk report: $RiskMarkdownPath"
+    exit 0
+  }
+
   Assert-AllowedChanges `
     -TargetRoot $TargetRoot `
     -ChangedFiles $changed `
@@ -406,6 +547,8 @@ try {
   }
   Invoke-CommandLine -Command "python -m self_maintainer_bot.cli eval-docs --fail-under 1" -WorkingDirectory $BotRoot
   Invoke-CommandLine -Command "git diff --check" -WorkingDirectory $TargetRoot
+  $DiffStat = Get-GitOutput -Arguments @("diff", "--stat") -WorkingDirectory $TargetRoot
+  $DiffNumstat = Get-GitOutput -Arguments @("diff", "--numstat") -WorkingDirectory $TargetRoot
 
   $safeTarget = $TargetRepo.Replace("/", "-")
   $branchName = "$BranchPrefix-$safeTarget-$RunId"
@@ -422,7 +565,8 @@ try {
     Remove-Item -LiteralPath $commitFile -Force -ErrorAction SilentlyContinue
   }
 
-  Invoke-CommandLine -Command "git push -u origin $branchName" -WorkingDirectory $TargetRoot
+  $PublisherToken = Set-PublisherIdentity
+  Invoke-GitPush -BranchName $branchName -WorkingDirectory $TargetRoot -Token $PublisherToken
 
   $changedList = ($changed | ForEach-Object { "- ``$_``" }) -join [Environment]::NewLine
   $verifyList = ($TargetVerifyCommands + @(
@@ -433,13 +577,30 @@ try {
     RUN_ID = $RunId
     PROFILE = if ($Profile) { $Profile } else { "(none)" }
     TARGET_REPOSITORY = $TargetRepo
+    INPUT_COMMIT = $InputCommit
+    PROFILE_VERSION = $ProfileVersion
     SCOPE = $Scope
+    MAX_RISK = $Risk.max_risk
+    PUBLISH_MODE = $Risk.publish_mode
+    CHANGED_FILE_COUNT = $Risk.changed_file_count
+    CHANGED_LINE_COUNT = $Risk.changed_line_count
+    DENIED_FILES = if ($Risk.denied_files.Count -gt 0) { ($Risk.denied_files | ForEach-Object { "- ``$_``" }) -join [Environment]::NewLine } else { "- 없음" }
+    DISALLOWED_FILES = if ($Risk.disallowed_files.Count -gt 0) { ($Risk.disallowed_files | ForEach-Object { "- ``$_``" }) -join [Environment]::NewLine } else { "- 없음" }
+    DIFF_STAT = if ($DiffStat) { $DiffStat } else { "(empty)" }
+    DIFF_NUMSTAT = if ($DiffNumstat) { $DiffNumstat } else { "(empty)" }
+    PATCH_ARTIFACT = $PatchPath
+    RISK_REPORT = $RiskMarkdownPath
+    LOG_PATH = $LogPath
     CHANGED_FILES = $changedList
     VERIFY_COMMANDS = $verifyList
   }
   $title = (Get-Content -LiteralPath $CommitTemplate -Encoding utf8 | Select-Object -First 1)
   try {
-    $prUrl = gh pr create --repo $TargetRepo --base $BaseBranch --head $branchName --title $title --body-file $prBodyFile
+    $prArgs = @("pr", "create", "--repo", $TargetRepo, "--base", $BaseBranch, "--head", $branchName, "--title", $title, "--body-file", $prBodyFile)
+    if ($Risk.publish_mode -eq "draft_pull_request") {
+      $prArgs += "--draft"
+    }
+    $prUrl = gh @prArgs
     if ($LASTEXITCODE -ne 0 -or -not $prUrl) {
       throw "Failed to create PR."
     }
@@ -449,7 +610,7 @@ try {
     Remove-Item -LiteralPath $prBodyFile -Force -ErrorAction SilentlyContinue
   }
 
-  if ($ResolvedAutoMerge) {
+  if ($ResolvedAutoMerge -and $Risk.publish_mode -eq "pull_request") {
     $prNumber = gh pr view $prUrl --repo $TargetRepo --json number --jq ".number"
     if ($LASTEXITCODE -ne 0 -or -not $prNumber) {
       throw "Failed to resolve PR number."
@@ -470,6 +631,9 @@ try {
     Invoke-NativeCommand -FilePath "gh" -Arguments $mergeArgs -WorkingDirectory $TargetRoot
     Invoke-CommandLine -Command "git switch $BaseBranch" -WorkingDirectory $TargetRoot
     Invoke-CommandLine -Command "git pull --ff-only origin $BaseBranch" -WorkingDirectory $TargetRoot
+  }
+  elseif ($ResolvedAutoMerge) {
+    Write-Log "Auto merge skipped because publish_mode=$($Risk.publish_mode)."
   }
 
   Write-Log "Auto improve run completed."

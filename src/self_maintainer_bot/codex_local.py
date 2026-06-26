@@ -4,7 +4,6 @@ import os
 import shutil
 import subprocess
 import sys
-from fnmatch import fnmatchcase
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,6 +11,7 @@ from pathlib import Path
 from self_maintainer_bot.config import Settings
 from self_maintainer_bot.docs_eval import EvalResult, run_docs_eval
 from self_maintainer_bot.reports import latest_eval_report, load_eval_results
+from self_maintainer_bot.risk import classify_changes, git_changed_files
 from self_maintainer_bot.target_repo import target_root
 
 
@@ -138,7 +138,7 @@ def run_codex_task(
     log_path = logs_dir / f"{stamp}-codex-exec.log"
     last_message_path = settings.runs_dir / "codex-last-message.md"
     work_root = target_root(settings)
-    baseline_dirty = git_changed_files(work_root)
+    baseline_dirty = set(git_changed_files(work_root))
     timeout = timeout_seconds or settings.codex_timeout_seconds
 
     command = [
@@ -307,6 +307,13 @@ def render_codex_task(
             "Do not commit, push, create pull requests, or read/print secrets.",
             "If you describe a commit or PR, write the title and body in Korean.",
             "",
+            "## Risk Model",
+            "",
+            "- R0: report/proposal only, no target file changes.",
+            "- R1: low-risk docs, copy, visual, or scoped implementation changes.",
+            "- R2: dependency, build, validation, package, or tooling changes; draft PR only.",
+            "- R3: workflow, credential, auth/security, infra, migration, or denied paths; proposal only.",
+            "",
             "## Required Workflow",
             "",
             "1. Run `git status --short` before editing and preserve unrelated changes.",
@@ -442,27 +449,6 @@ def run_local_verification(settings: Settings, *, log_path: Path) -> int:
     return final_code
 
 
-def git_changed_files(root: Path) -> set[str]:
-    if not (root / ".git").exists():
-        return set()
-    result = subprocess.run(
-        ["git", "status", "--porcelain"],
-        cwd=root,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    changed: set[str] = set()
-    for line in result.stdout.splitlines():
-        if not line:
-            continue
-        path = line[3:]
-        if " -> " in path:
-            _, path = path.rsplit(" -> ", 1)
-        changed.add(path.replace("\\", "/"))
-    return changed
-
-
 def verify_allowed_changes(
     *,
     root: Path,
@@ -473,15 +459,16 @@ def verify_allowed_changes(
     baseline_dirty: set[str],
     log_path: Path,
 ) -> int:
-    changed_after = git_changed_files(root)
-    new_changes = changed_after - baseline_dirty
-    denied = sorted(path for path in new_changes if any_path_matches(path, denied_paths))
-    disallowed = sorted(
-        path
-        for path in new_changes
-        if not any_path_matches(path, allowed_paths)
+    changed_after = set(git_changed_files(root))
+    new_changes = sorted(changed_after - baseline_dirty)
+    report = classify_changes(
+        root=root,
+        changed_files=new_changes,
+        allowed_paths=allowed_paths,
+        denied_paths=denied_paths,
+        max_files=max_files,
+        max_lines=max_lines,
     )
-    line_total = changed_line_total(root, sorted(new_changes)) if max_lines else 0
     with log_path.open("a", encoding="utf-8", newline="\n") as log:
         log.write("\n## verification: allowed change guard\n\n")
         if not new_changes:
@@ -490,79 +477,18 @@ def verify_allowed_changes(
             log.write("New changed files:\n")
             for path in sorted(new_changes):
                 log.write(f"- {path}\n")
-        if disallowed:
+        if report.disallowed_files:
             log.write("\nDisallowed files:\n")
-            for path in disallowed:
+            for path in report.disallowed_files:
                 log.write(f"- {path}\n")
-        if denied:
+        if report.denied_files:
             log.write("\nDenied files:\n")
-            for path in denied:
+            for path in report.denied_files:
                 log.write(f"- {path}\n")
-        if max_files and len(new_changes) > max_files:
-            log.write(f"\nToo many changed files: {len(new_changes)} > {max_files}\n")
-        if max_lines and line_total > max_lines:
-            log.write(f"\nToo many changed lines: {line_total} > {max_lines}\n")
-        if disallowed or denied:
-            return 1
-        if max_files and len(new_changes) > max_files:
-            return 1
-        if max_lines and line_total > max_lines:
-            return 1
-    return 0
-
-
-def any_path_matches(path: str, patterns: list[str]) -> bool:
-    return any(path_matches(path, pattern) for pattern in patterns)
-
-
-def path_matches(path: str, pattern: str) -> bool:
-    normalized_path = path.replace("\\", "/")
-    normalized_pattern = pattern.replace("\\", "/").strip()
-    if not normalized_pattern:
-        return False
-    if normalized_pattern.endswith("/**"):
-        prefix = normalized_pattern[:-3].rstrip("/")
-        return normalized_path == prefix or normalized_path.startswith(f"{prefix}/")
-    if normalized_pattern.endswith("/"):
-        return normalized_path.startswith(normalized_pattern)
-    if any(token in normalized_pattern for token in "*?[]"):
-        return fnmatchcase(normalized_path, normalized_pattern)
-    return normalized_path == normalized_pattern or normalized_path.startswith(
-        f"{normalized_pattern.rstrip('/')}/"
-    )
-
-
-def changed_line_total(root: Path, files: list[str]) -> int:
-    if not files:
-        return 0
-    result = subprocess.run(
-        ["git", "diff", "--numstat", "--", *files],
-        cwd=root,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    total = 0
-    seen: set[str] = set()
-    for line in result.stdout.splitlines():
-        parts = line.split("\t")
-        if len(parts) < 3:
-            continue
-        added, deleted, path = parts[0], parts[1], parts[2]
-        seen.add(path.replace("\\", "/"))
-        if added.isdigit():
-            total += int(added)
-        if deleted.isdigit():
-            total += int(deleted)
-
-    for file_path in files:
-        if file_path in seen:
-            continue
-        path = root / file_path
-        if not path.is_file():
-            continue
-        try:
-            total += len(path.read_text(encoding="utf-8").splitlines())
-        except UnicodeDecodeError:
-            total += 1
-    return total
+        if report.limit_exceeded:
+            log.write(
+                "\nLimit exceeded: "
+                f"files={report.changed_file_count}/{max_files or 'unlimited'}, "
+                f"lines={report.changed_line_count}/{max_lines or 'unlimited'}\n"
+            )
+    return 0 if report.publish_mode in {"report_only", "pull_request", "draft_pull_request"} else 1

@@ -7,13 +7,45 @@
 - 실행 ID: `{{RUN_ID}}`
 - profile: `{{PROFILE}}`
 - target repo: `{{TARGET_REPOSITORY}}`
+- input commit: `{{INPUT_COMMIT}}`
+- profile/control-plane commit: `{{PROFILE_VERSION}}`
 - scope: `{{SCOPE}}`
+- max risk: `{{MAX_RISK}}`
+- publish mode: `{{PUBLISH_MODE}}`
+- changed files: `{{CHANGED_FILE_COUNT}}`
+- changed lines: `{{CHANGED_LINE_COUNT}}`
 - 변경 파일:
 {{CHANGED_FILES}}
+
+## Risk Guard
+
+Denied files:
+{{DENIED_FILES}}
+
+Outside allowPaths:
+{{DISALLOWED_FILES}}
+
+## Diff Stat
+
+```text
+{{DIFF_STAT}}
+```
+
+## Diff Numstat
+
+```text
+{{DIFF_NUMSTAT}}
+```
 
 ## 검증
 
 {{VERIFY_COMMANDS}}
+
+## 로컬 Evidence
+
+- patch artifact: `{{PATCH_ARTIFACT}}`
+- risk report: `{{RISK_REPORT}}`
+- scheduler log: `{{LOG_PATH}}`
 
 ## 남은 위험
 
