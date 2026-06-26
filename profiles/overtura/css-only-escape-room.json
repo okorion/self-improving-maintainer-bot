@@ -5,6 +5,18 @@
   "scope": "docs",
   "docPaths": ["README.md", "DESIGN.md", "docs", "maintainer-bot"],
   "evalsPath": "maintainer-bot/evals/docs_qa.jsonl",
+  "projectConcept": "JavaScript 없이 CSS 상태와 HTML 입력 요소만으로 진행되는 밝은 CSS-only escape room",
+  "improvementFocus": [
+    "퍼즐 단계, 진행 힌트, 완료 상태를 CSS-only로 표현",
+    "키보드/모바일에서도 이해되는 방탈출 인터랙션",
+    "게임 규칙과 상태 피드백을 밝고 읽기 쉬운 UI로 정리"
+  ],
+  "avoidTopics": [
+    "GitHub 활동 지표",
+    "셰이더 프리셋",
+    "네이티브 UI kit 컴포넌트 카탈로그",
+    "스크롤 스토리텔링 챕터"
+  ],
   "verifyCommands": [
     "pnpm install --frozen-lockfile || pnpm install",
     "pnpm check"

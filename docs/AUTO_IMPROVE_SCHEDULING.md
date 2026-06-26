@@ -38,6 +38,9 @@ prepare-target
 - overlap policy: 이전 실행이 끝나지 않았으면 다음 실행은 건너뜀
 - review response: red-team FAIL 시 최대 2회 자동 대응
 - closed PR replacement: review-response 한도 초과로 닫힌 PR은 성공 회차로 세지 않고 같은 iteration에서 새 후보를 찾음
+- target independence: 각 target repo는 자기 README, DESIGN 문서, 소스, 최근 병합 PR만 기준으로 개선 후보를 고른다. 병렬 실행 중인 다른 repo의 주제나 변경 방향을 따라가지 않는다.
+- public PR hygiene: PR 본문과 댓글에는 로컬 절대경로, patch/risk/red-team report 경로, scheduler log 경로를 게시하지 않는다. 로컬 evidence는 ignored `runs/`와 Codex capture-artifacts manifest에만 보존한다.
+- visual evidence: 자동 루프는 가능한 경우 변경 전/후 headless browser 캡처를 저장하고, PR에는 파일명과 보존 여부만 기록한다.
 - merge wait: auto-merge 요청 후 실제 `MERGED` 상태까지 대기
 - allowed publish paths: `README.md`, `CONTRIBUTING.md`, `docs/`
 - R2 publish: draft PR only

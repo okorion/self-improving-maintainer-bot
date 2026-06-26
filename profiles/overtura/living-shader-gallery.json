@@ -5,6 +5,18 @@
   "scope": "docs",
   "docPaths": ["README.md", "DESIGN.md", "docs", "maintainer-bot"],
   "evalsPath": "maintainer-bot/evals/docs_qa.jsonl",
+  "projectConcept": "실시간 셰이더 프리셋과 WebGL 캔버스를 탐색하는 밝은 톤의 인터랙티브 갤러리",
+  "improvementFocus": [
+    "셰이더 프리셋 탐색, 비교, 상태 표시",
+    "캔버스 주변의 가독성 높은 밝은 UI",
+    "WebGL이 부담스러운 사용자를 위한 안내와 fallback"
+  ],
+  "avoidTopics": [
+    "GitHub 활동 지표",
+    "스크롤 스토리텔링 챕터",
+    "네이티브 HTML 폼 컴포넌트",
+    "탈출 게임 진행 힌트"
+  ],
   "verifyCommands": [
     "pnpm install --frozen-lockfile || pnpm install",
     "pnpm check"

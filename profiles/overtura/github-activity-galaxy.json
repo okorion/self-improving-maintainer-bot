@@ -5,6 +5,18 @@
   "scope": "docs",
   "docPaths": ["README.md", "DESIGN.md", "docs", "maintainer-bot"],
   "evalsPath": "maintainer-bot/evals/docs_qa.jsonl",
+  "projectConcept": "GitHub PR, 이슈, 커밋, 리뷰 활동을 3D 은하 형태로 비교하는 밝은 데이터 시각화 앱",
+  "improvementFocus": [
+    "기간별 활동 지표와 비교 인사이트",
+    "3D 궤도와 범례의 읽기 쉬운 데이터 표현",
+    "활동 유형 필터와 요약 패널"
+  ],
+  "avoidTopics": [
+    "셰이더 프리셋 갤러리",
+    "CSS-only 탈출 게임",
+    "네이티브 HTML 컴포넌트 문서",
+    "스크롤 오디세이 챕터"
+  ],
   "verifyCommands": [
     "pnpm install --frozen-lockfile || pnpm install",
     "pnpm check"

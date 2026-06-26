@@ -5,6 +5,18 @@
   "scope": "docs",
   "docPaths": ["README.md", "DESIGN.md", "docs", "maintainer-bot"],
   "evalsPath": "maintainer-bot/evals/docs_qa.jsonl",
+  "projectConcept": "JavaScript 없이 네이티브 HTML 요소와 최신 CSS로 구성한 밝은 UI kit와 컴포넌트 카탈로그",
+  "improvementFocus": [
+    "details, dialog, popover, form, fieldset 같은 네이티브 컴포넌트 예시",
+    "컴포넌트별 상태, 접근성, 사용 맥락 설명",
+    "UI kit로 반복 사용하기 쉬운 토큰과 레이아웃"
+  ],
+  "avoidTopics": [
+    "게임 퍼즐 진행",
+    "GitHub 활동 은하",
+    "WebGL 셰이더",
+    "스크롤 오디세이 장면 전환"
+  ],
   "verifyCommands": [
     "pnpm install --frozen-lockfile || pnpm install",
     "pnpm check"

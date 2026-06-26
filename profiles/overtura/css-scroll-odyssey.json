@@ -5,6 +5,18 @@
   "scope": "docs",
   "docPaths": ["README.md", "DESIGN.md", "docs", "maintainer-bot"],
   "evalsPath": "maintainer-bot/evals/docs_qa.jsonl",
+  "projectConcept": "JavaScript 없이 CSS scroll snap, sticky, timeline 감각으로 장면을 넘기는 밝은 스크롤 오디세이",
+  "improvementFocus": [
+    "스크롤 챕터, 진행감, 장면 전환의 명확성",
+    "모바일/데스크톱에서 안정적인 scroll-snap 레이아웃",
+    "CSS-only 방식의 내비게이션과 위치 힌트"
+  ],
+  "avoidTopics": [
+    "GitHub 활동 데이터",
+    "셰이더 프리셋",
+    "네이티브 HTML UI 컴포넌트 카탈로그",
+    "방탈출 퍼즐 상태"
+  ],
   "verifyCommands": [
     "pnpm install --frozen-lockfile || pnpm install",
     "pnpm check"

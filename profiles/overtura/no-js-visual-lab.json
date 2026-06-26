@@ -5,6 +5,18 @@
   "scope": "docs",
   "docPaths": ["README.md", "DESIGN.md", "docs", "maintainer-bot"],
   "evalsPath": "maintainer-bot/evals/docs_qa.jsonl",
+  "projectConcept": "JavaScript 없이 최신 HTML/CSS 기능만으로 상호작용과 시각 실험을 보여주는 밝은 visual lab",
+  "improvementFocus": [
+    "details, popover, dialog, form 등 네이티브/no-JS 상호작용 예시",
+    "CSS selector, layer, container query 기반의 실험 패널",
+    "JavaScript 사용 금지 원칙을 지키는 검증 가능한 UI"
+  ],
+  "avoidTopics": [
+    "WebGL/Three.js 셰이더",
+    "GitHub 활동 은하 데이터",
+    "탈출 게임 퍼즐 진행",
+    "긴 스크롤 스토리텔링"
+  ],
   "verifyCommands": [
     "pnpm install --frozen-lockfile || pnpm install",
     "pnpm check"

@@ -15,7 +15,7 @@ param(
   [switch]$AllowLocalPublisherAuth,
   [string]$RedteamStatusContext = "codex-redteam",
   [switch]$SkipRedteam,
-  [int]$MaxReviewResponses = 6,
+  [int]$MaxReviewResponses = 8,
   [bool]$ClosePrOnReviewFailure = $true,
   [int]$ReviewFailureExitCode = 20,
   [int]$MergeWaitTimeoutSeconds = 900,
@@ -54,6 +54,7 @@ $ReviewResponseCommentTemplate = Join-Path $BotRoot "templates\review-response-c
 $RedteamCloseCommentTemplate = Join-Path $BotRoot "templates\redteam-close-comment.md"
 $RedteamPassHandlingTemplate = Join-Path $BotRoot "templates\redteam-pass-handling-comment.md"
 $RedteamResponseHandlingTemplate = Join-Path $BotRoot "templates\redteam-response-handling-comment.md"
+$VisualCaptureScript = Join-Path $BotRoot "scripts\capture-target-visuals.ps1"
 
 function New-UnicodeString {
   param([int[]]$CodePoints)
@@ -114,6 +115,148 @@ function Write-Log {
   $line = "$(Get-Date -Format o) $Message"
   Write-Host $line
   Add-Content -LiteralPath $LogPath -Value $line -Encoding utf8
+}
+
+function Get-RecentPullRequestContext {
+  param(
+    [string]$Repo,
+    [int]$Limit = 8
+  )
+  if (-not $Repo) {
+    return "- recent PR context unavailable"
+  }
+  try {
+    $jsonText = Invoke-GhOutput -Arguments @("pr", "list", "--repo", $Repo, "--state", "merged", "--limit", [string]$Limit, "--json", "number,title,mergedAt")
+    $items = $jsonText | ConvertFrom-Json
+    if (-not $items -or $items.Count -eq 0) {
+      return "- no recent merged PRs"
+    }
+    return (($items | ForEach-Object { "- #$($_.number) $($_.title)" }) -join [Environment]::NewLine)
+  }
+  catch {
+    Write-Log "WARNING Failed to read recent PR context for $Repo. $($_.Exception.Message)"
+    return "- recent PR context unavailable"
+  }
+}
+
+function Get-ProfileString {
+  param(
+    [object]$ProfileObject,
+    [string]$Name,
+    [string]$Fallback = ""
+  )
+  if ($ProfileObject -and ($ProfileObject.PSObject.Properties.Name -contains $Name) -and $ProfileObject.$Name) {
+    return [string]$ProfileObject.$Name
+  }
+  return $Fallback
+}
+
+function Get-ProfileStringList {
+  param(
+    [object]$ProfileObject,
+    [string]$Name
+  )
+  if ($ProfileObject -and ($ProfileObject.PSObject.Properties.Name -contains $Name) -and $ProfileObject.$Name) {
+    return Get-StringArray $ProfileObject.$Name
+  }
+  return @()
+}
+
+function Get-TargetGoal {
+  param(
+    [string]$Repo,
+    [string]$Kind,
+    [object]$ProfileObject
+  )
+  $concept = Get-ProfileString -ProfileObject $ProfileObject -Name "projectConcept" -Fallback "The repository-specific product experience described by this target repo's README, DESIGN docs, source, and UI."
+  $focusList = Get-ProfileStringList -ProfileObject $ProfileObject -Name "improvementFocus"
+  $avoidList = Get-ProfileStringList -ProfileObject $ProfileObject -Name "avoidTopics"
+  $recentPrs = Get-RecentPullRequestContext -Repo $Repo -Limit 8
+  $focusText = if ($focusList.Count -gt 0) { ($focusList | ForEach-Object { "- $_" }) -join [Environment]::NewLine } else { "- the smallest useful gap in this repository's current UI, behavior, or structure" }
+  $avoidText = if ($avoidList.Count -gt 0) { ($avoidList | ForEach-Object { "- $_" }) -join [Environment]::NewLine } else { "- changes chosen to match another overtura target repository's recent topic" }
+
+  return @"
+Find one repository-specific $Kind improvement for $Repo.
+
+This target repository must improve independently. Do not coordinate topics with other repositories in the batch, do not mirror another repository's PR theme, and do not choose a generic change only because it is easy to repeat.
+
+Repository concept:
+$concept
+
+Preferred improvement areas for this repository:
+$focusText
+
+Avoid these topics unless the current repository clearly needs them:
+$avoidText
+
+Recent merged PRs in this repository; avoid repeating these subjects:
+$recentPrs
+
+Inspect this target repository's README, DESIGN/docs, source, UI behavior, and current git state before editing. Choose a small user-visible feat, style, or refactor change that fits this repository's own gaps. Do not use docs-only changes for a $Kind task unless $Kind is docs.
+"@
+}
+
+function Convert-ToCommandArgumentText {
+  param([string]$Value)
+  if (-not $Value) {
+    return ""
+  }
+  $text = $Value.Replace('"', "'")
+  $text = $text -replace "\s+", " "
+  return $text.Trim()
+}
+
+function Invoke-VisualCapture {
+  param(
+    [string]$TargetRoot,
+    [string]$Repo,
+    [string]$Phase
+  )
+  if (-not (Test-Path -LiteralPath $VisualCaptureScript -PathType Leaf)) {
+    return "capture skipped: capture script missing"
+  }
+  try {
+    $output = powershell -NoProfile -ExecutionPolicy Bypass -File $VisualCaptureScript -TargetRoot $TargetRoot -Repo $Repo -RunId $RunId -Phase $Phase 2>> $LogPath
+    if ($LASTEXITCODE -ne 0) {
+      Write-Log "WARNING Visual capture $Phase failed with exit code $LASTEXITCODE."
+      return "capture skipped: command failed"
+    }
+    $line = (($output | Where-Object { $_ }) | Select-Object -Last 1)
+    if (-not $line) {
+      return "capture skipped: no result"
+    }
+    if ($line -like "CAPTURED *") {
+      return $line.Substring(9).Trim()
+    }
+    return "capture skipped: $line"
+  }
+  catch {
+    Write-Log "WARNING Visual capture $Phase failed. $($_.Exception.Message)"
+    return "capture skipped: $($_.Exception.Message)"
+  }
+}
+
+function Assert-PublicPrBody {
+  param([string]$BodyPath)
+  $body = Get-Content -LiteralPath $BodyPath -Raw -Encoding utf8
+  $forbiddenPatterns = @(
+    [regex]::Escape($BotRoot),
+    [regex]::Escape($env:USERPROFILE),
+    "C:\\Users\\",
+    "patch artifact:",
+    "risk report:",
+    "red-team report:",
+    "scheduler log:",
+    "Local Evidence",
+    "Risk Guard",
+    "Diff Stat",
+    "Diff Numstat"
+  )
+  foreach ($pattern in $forbiddenPatterns) {
+    if ($body -match $pattern) {
+      throw "Refusing to publish PR body with local evidence or internal path pattern: $pattern"
+    }
+  }
 }
 
 function Resolve-ProfilePath {
@@ -497,12 +640,12 @@ Check for:
 3. dependency/build/script changes that should not auto-merge as R1.
 4. accidental broad rewrites or unrelated files.
 5. broken Korean documentation, obvious UI copy regressions, or invalid project instructions.
-6. mismatch between the PR body, risk report, verification summary, and actual diff.
+6. mismatch between the PR body, internal risk/verification evidence, and actual diff.
 
 Decision rules:
 
 - PASS only when the diff is safe to merge automatically under the current publish mode.
-- FAIL if you are unsure, if a protected path is present, if the PR verification summary is missing or contradicted, or if the change needs human judgment.
+- FAIL if you are unsure, if a protected path is present, if internal verification evidence is missing or contradicted, or if the change needs human judgment.
 - R2 draft PRs may pass review, but they must not auto-merge.
 - R3/proposal-only changes must fail if they reach this review.
 
@@ -535,7 +678,7 @@ REDTEAM_DECISION: FAIL
       $ErrorActionPreference = $previousErrorActionPreference
     }
     if ($script:CodexRedteamExitCode -ne 0) {
-      "Codex red-team review failed with exit code $($script:CodexRedteamExitCode)." | Set-Content -LiteralPath $attemptReportPath -Encoding utf8
+      "Codex red-team review command failed with exit code $($script:CodexRedteamExitCode)." | Set-Content -LiteralPath $attemptReportPath -Encoding utf8
       Copy-Item -LiteralPath $attemptReportPath -Destination $RedteamReportPath -Force
       return [pscustomobject]@{
         Decision = "FAIL"
@@ -744,7 +887,7 @@ $report
       $ErrorActionPreference = $previousErrorActionPreference
     }
     if ($script:CodexReviewResponseExitCode -ne 0) {
-      "Codex review response failed with exit code $($script:CodexReviewResponseExitCode)." | Set-Content -LiteralPath $attemptSummaryPath -Encoding utf8
+      "Codex review response command failed with exit code $($script:CodexReviewResponseExitCode)." | Set-Content -LiteralPath $attemptSummaryPath -Encoding utf8
       Copy-Item -LiteralPath $attemptSummaryPath -Destination $ReviewResponseSummaryPath -Force
       throw "Codex review response failed. See $attemptSummaryPath"
     }
@@ -1307,6 +1450,7 @@ try {
   Assert-CleanTarget -TargetRoot $TargetRoot
   $InputCommit = Get-GitOutput -Arguments @("rev-parse", "HEAD") -WorkingDirectory $TargetRoot
   $ProfileVersion = Get-GitOutput -Arguments @("rev-parse", "HEAD") -WorkingDirectory $BotRoot
+  $BeforeCapture = "capture skipped: publisher phase"
 
   if ($Phase -eq "publisher") {
     if (-not $PatchArtifact) {
@@ -1315,9 +1459,10 @@ try {
     Apply-PatchArtifact -TargetRoot $TargetRoot -InputPath $PatchArtifact
   }
   else {
+    $BeforeCapture = Invoke-VisualCapture -TargetRoot $TargetRoot -Repo $TargetRepo -Phase "before"
     Invoke-WithPublisherEnvCleared {
       Invoke-CommandLine -Command "python -m self_maintainer_bot.cli eval-docs --fail-under 0" -WorkingDirectory $BotRoot
-      $targetGoal = "Find one repository-specific $ImprovementKind improvement for $TargetRepo. Inspect this target repository's README, DESIGN/docs, source, and recent local changes before editing. Do not copy topics from other target repositories. Prefer a small user-visible feat, style, or refactor change over docs unless docs is explicitly requested."
+      $targetGoal = Convert-ToCommandArgumentText (Get-TargetGoal -Repo $TargetRepo -Kind $ImprovementKind -ProfileObject $ProfileData)
       Invoke-CommandLine -Command "python -m self_maintainer_bot.cli codex-local-loop --goal `"$targetGoal`" --scope $Scope --improvement-kind $ImprovementKind --execute" -WorkingDirectory $BotRoot
     }
   }
@@ -1359,6 +1504,7 @@ try {
   }
   Invoke-CommandLine -Command "python -m self_maintainer_bot.cli eval-docs --fail-under 1" -WorkingDirectory $BotRoot
   Invoke-CommandLine -Command "git diff --check" -WorkingDirectory $TargetRoot
+  $AfterCapture = Invoke-VisualCapture -TargetRoot $TargetRoot -Repo $TargetRepo -Phase "after"
   $DiffStat = Get-GitOutput -Arguments @("diff", "--stat") -WorkingDirectory $TargetRoot
   $DiffNumstat = Get-GitOutput -Arguments @("diff", "--numstat") -WorkingDirectory $TargetRoot
   Invoke-CommandLine -Command "python -m self_maintainer_bot.cli summarize-target-change --kind $ImprovementKind --output-json `"$ChangeSummaryJsonPath`"" -WorkingDirectory $BotRoot
@@ -1421,7 +1567,10 @@ try {
     CHANGED_FILES = $changedList
     VERIFY_COMMANDS = $verifyList
     VERIFY_SUMMARY = $verifySummary
+    BEFORE_CAPTURE = $BeforeCapture
+    AFTER_CAPTURE = $AfterCapture
   }
+  Assert-PublicPrBody -BodyPath $prBodyFile
   $title = [string]$ChangeSummary.title
   try {
     $prArgs = @("pr", "create", "--repo", $TargetRepo, "--base", $BaseBranch, "--head", $branchName, "--title", $title, "--body-file", $prBodyFile)
@@ -1509,14 +1658,20 @@ try {
 
       $responseChanged = Get-ChangedFiles -TargetRoot $TargetRoot
       if ($responseChanged.Count -eq 0) {
-        Close-ReviewFailedPullRequest `
-          -Repo $TargetRepo `
-          -PrNumber $prNumber `
-          -BranchName $branchName `
-          -TargetRoot $TargetRoot `
-          -BaseBranch $BaseBranch `
-          -Reason (Get-NoReviewResponseChangesReason -Attempt $reviewAttempt) `
-          -ReportPath $responseSummaryPath
+        Add-ReviewResponsePrComment -Repo $TargetRepo -PrNumber $prNumber -SummaryPath $responseSummaryPath -ChangedFiles $responseChanged -Attempt $reviewAttempt
+        Add-RedteamHandlingComment -Repo $TargetRepo -PrNumber $prNumber -RedteamCommentId $redteamCommentId -Outcome "response" -Attempt $reviewAttempt -CommitSha "no-change" -SummaryPath $responseSummaryPath
+        if ($reviewAttempt -ge $maxReviewAttempts) {
+          Close-ReviewFailedPullRequest `
+            -Repo $TargetRepo `
+            -PrNumber $prNumber `
+            -BranchName $branchName `
+            -TargetRoot $TargetRoot `
+            -BaseBranch $BaseBranch `
+            -Reason (Get-NoReviewResponseChangesReason -Attempt $reviewAttempt) `
+            -ReportPath $responseSummaryPath
+        }
+        $reviewAttempt += 1
+        continue
       }
       $responsePatchPath = Get-AttemptArtifactPath -Name "review-response" -Attempt $reviewAttempt -Extension "patch"
       Save-PatchArtifact -TargetRoot $TargetRoot -OutputPath $responsePatchPath

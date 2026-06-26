@@ -313,6 +313,8 @@ def render_codex_task(
         "- First inspect this repository's own README, design docs, source structure, and existing UI behavior.",
         "- Choose an improvement that is specific to this repository's concept and current implementation.",
         "- Do not mirror a topic just because another target repository used it in the same batch.",
+        "- Do not repeat this repository's own recent merged PR subjects unless the current code clearly needs a follow-up.",
+        "- Favor independent repo-specific gaps over generic improvements that could apply equally to every target repo.",
         "",
         "## Allowed Scope",
         "",

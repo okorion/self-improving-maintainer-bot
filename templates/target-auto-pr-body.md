@@ -4,6 +4,13 @@
 
 {{CHANGE_SUMMARY}}
 
+## 시각 변경 확인
+
+- 변경 전 캡처: `{{BEFORE_CAPTURE}}`
+- 변경 후 캡처: `{{AFTER_CAPTURE}}`
+
+캡처 파일은 로컬 Codex capture-artifacts 보존소의 manifest에 등록했습니다. PR 본문에는 로컬 절대경로를 남기지 않습니다.
+
 ## 자동 검토 요약
 
 - 대상 레포: `{{TARGET_REPOSITORY}}`
@@ -13,13 +20,7 @@
 - 게시 방식: `{{PUBLISH_MODE}}`
 - red-team 상태 컨텍스트: `{{REDTEAM_STATUS_CONTEXT}}`
 
-## 검증 요약
-
-PR 생성 전에 다음 자동 검증을 통과했습니다.
-
-{{VERIFY_SUMMARY}}
-
 ## 후속 확인
 
 - 자동 red-team 리뷰가 통과한 뒤 병합합니다.
-- 검증 또는 리뷰 대응에서 차단 사유가 남으면 자동으로 보정 커밋을 추가하고 재검토합니다.
+- 검증 또는 리뷰 대응에서 차단 사유가 남으면 최대 8회까지 보정 커밋 또는 무변경 사유를 남기고 재검토합니다.

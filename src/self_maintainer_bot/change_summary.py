@@ -205,8 +205,11 @@ def _file_summary(root: Path, path: str, kind: str) -> str:
     added, removed = _diff_line_counts(diff_text)
     role = _path_role(path)
     change = _change_phrase(path, kind)
+    semantic = _semantic_change_detail(path, diff_text, kind)
     detail = _first_added_signal(diff_text)
     size = f"+{added}/-{removed}"
+    if semantic:
+        return f"{role}에서 {semantic} 변경을 반영했습니다. 변경 규모는 {size}입니다."
     if detail:
         return f"{role}에서 {change} 변경을 반영했습니다. 변경 규모는 {size}이며, 핵심 추가 단서는 '{detail}'입니다."
     return f"{role}에서 {change} 변경을 반영했습니다. 변경 규모는 {size}입니다."
@@ -250,6 +253,77 @@ def _first_added_signal(diff_text: str) -> str:
             candidate = candidate[:93].rstrip() + "..."
         return candidate
     return ""
+
+
+def _added_lines(diff_text: str) -> list[str]:
+    lines: list[str] = []
+    for line in diff_text.splitlines():
+        if line.startswith("+") and not line.startswith("+++"):
+            candidate = line[1:].strip()
+            if candidate:
+                lines.append(candidate)
+    return lines
+
+
+def _semantic_change_detail(path: str, diff_text: str, kind: str) -> str:
+    added = _added_lines(diff_text)
+    joined = "\n".join(added).lower()
+    class_names = _extract_css_class_names(added)
+    labels = _extract_korean_labels(added)
+
+    if "period" in joined and ("bucket" in joined or "metric" in joined):
+        return "기간별 활동 지표와 유형별 분포를 한 화면에서 비교할 수 있는 요약 UI를 추가하는"
+    if "shader" in joined or "preset" in joined:
+        return "셰이더 프리셋을 더 쉽게 구분하고 탐색할 수 있는 화면 요소를 추가하는"
+    if "scroll" in joined and ("chapter" in joined or "snap" in joined):
+        return "스크롤 위치와 장면 흐름을 더 분명하게 확인할 수 있는 탐색 UI를 추가하는"
+    if "hint" in joined or "progress" in joined or "escape" in joined:
+        return "퍼즐 진행 상태와 다음 행동 단서를 더 쉽게 파악할 수 있는 게임 UI를 추가하는"
+    if "details" in joined or "summary" in joined or "dialog" in joined or "popover" in joined:
+        return "네이티브 HTML 컴포넌트의 상태와 사용 예시를 더 쉽게 비교할 수 있게 하는"
+    if "focus-visible" in joined or "aria-" in joined:
+        return "키보드 탐색과 보조기기 맥락을 더 분명하게 드러내는 접근성 상태를 추가하는"
+    if "@media" in joined or "max-width" in joined or "container" in joined:
+        return "화면 폭에 맞춰 정보가 겹치지 않도록 반응형 레이아웃을 다듬는"
+    if class_names:
+        return f"`{', '.join(class_names[:3])}` 화면 요소를 중심으로 표시 상태와 레이아웃을 다듬는"
+    if labels:
+        return f"`{', '.join(labels[:3])}` 정보를 사용자가 바로 읽을 수 있도록 화면에 추가하는"
+    if kind == "refactor" and path.startswith("src/"):
+        return "컴포넌트 데이터 계산과 렌더링 흐름을 분리해 이후 기능 추가가 쉬워지도록 정리하는"
+    return ""
+
+
+def _extract_css_class_names(lines: list[str]) -> list[str]:
+    names: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("."):
+            name = stripped[1:].split()[0].split("{")[0].strip()
+            if name and name not in names:
+                names.append(name)
+        if "className=" in stripped:
+            parts = stripped.split("className=", 1)[1]
+            quote = '"' if '"' in parts[:2] else "'"
+            if quote in parts:
+                value = parts.split(quote, 2)[1]
+                for name in value.split():
+                    clean = name.strip("{}")
+                    if clean and clean not in names:
+                        names.append(clean)
+    return names
+
+
+def _extract_korean_labels(lines: list[str]) -> list[str]:
+    labels: list[str] = []
+    for line in lines:
+        text = " ".join(line.replace("<", " ").replace(">", " ").split())
+        if not any("가" <= char <= "힣" for char in text):
+            continue
+        text = text.strip("`'\"{}();,")
+        if 2 <= len(text) <= 28 and text not in labels:
+            labels.append(text)
+    return labels
 
 
 def _path_role(path: str) -> str:

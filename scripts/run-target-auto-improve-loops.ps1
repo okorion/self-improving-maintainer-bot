@@ -9,7 +9,7 @@ param(
   [string[]]$NonDocsSequence = @("feat", "style", "refactor"),
   [switch]$AutoMerge,
   [switch]$AllowLocalPublisherAuth,
-  [int]$MaxReviewResponses = 6,
+  [int]$MaxReviewResponses = 8,
   [int]$MaxClosedPrReplacements = 3,
   [int]$ReviewFailureExitCode = 20,
   [int]$MergeWaitTimeoutSeconds = 900,
