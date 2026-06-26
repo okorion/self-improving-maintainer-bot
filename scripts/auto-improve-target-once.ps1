@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param(
   [string]$Scope = "docs",
-  [string]$TargetRepo = "okorion/action-ledger",
+  [string]$TargetRepo = "overtura/action-ledger",
   [string]$BaseBranch = "main",
   [string]$BranchPrefix = "codex/auto-improve",
   [ValidateSet("squash", "merge", "rebase")]
