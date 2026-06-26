@@ -428,7 +428,8 @@ def _improvement_kind_guidance(improvement_kind: str) -> list[str]:
         return guidance[improvement_kind]
     return [
         "- Choose the most valuable safe improvement kind for this repository.",
-        "- Prefer feat, style, or refactor when recent successful loops were docs-only.",
+        "- Prefer feat, style, or refactor over docs unless documentation is explicitly requested or clearly the highest-value fix.",
+        "- Do not use auto mode as a reason to produce repeated docs-only changes.",
     ]
 
 

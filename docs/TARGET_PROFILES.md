@@ -29,7 +29,7 @@ profile 이름은 다음 두 형식을 지원한다.
 - `maxFiles`, `maxLines`: 한 PR 변경량 제한
 - `autoMerge`: profile 기본 자동 merge 여부
 
-`run-target-auto-improve-loops.ps1`의 기본 자동 선택은 profile별 최근 성공 상태를 보고 docs PR을 최대 3회 연속까지만 허용한다. 이후에는 `feat`, `style`, `refactor` 순서로 작고 검증 가능한 개선을 우선한다.
+`run-target-auto-improve-loops.ps1`의 기본 자동 선택은 `feat`, `style`, `refactor` 순서로 작고 검증 가능한 non-doc 개선을 우선한다. docs PR은 별도 운용 정책에서 제한적으로 선택할 수 있지만, 반복 방지를 위해 최대 3회 연속까지만 허용하는 상한선으로 다룬다. `-ImprovementKind docs`는 수동 override다.
 
 ## R3 기본 정책
 

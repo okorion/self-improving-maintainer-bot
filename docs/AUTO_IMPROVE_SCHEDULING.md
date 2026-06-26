@@ -31,8 +31,8 @@ prepare-target
 
 - interval: 1시간
 - duration: 24시간
-- scope/kind: 자동 선택. 기본은 `docs`지만 docs 성공은 최대 3회 연속까지만 허용
-- non-docs sequence: `feat -> style -> refactor`
+- scope/kind: 자동 선택. 기본은 `feat -> style -> refactor` 순서의 non-doc 개선
+- docs cap: docs는 반복 방지용으로 최대 3회 연속까지만 허용하며, 3회를 채우기 위해 우선 생성하지 않는다. `-Scope docs` 반복 실행도 cap 이후 non-doc으로 전환된다
 - non-doc guard: `feat`, `style`, `refactor` 요청에서 docs-only 변경이 나오면 PR을 만들지 않고 같은 회차에서 새 후보를 재시도
 - merge method: squash
 - overlap policy: 이전 실행이 끝나지 않았으면 다음 실행은 건너뜀
@@ -115,7 +115,7 @@ Unregister-ScheduledTask -TaskName ActionLedgerAutoImprove24h -Confirm:$false
 - 자동 merge 허용 여부: `-AutoMerge`를 켤지
 - merge 방식: `squash`, `merge`, `rebase` 중 하나
 - scope/kind: 기본 자동 선택을 쓸지, `-Scope`와 `-ImprovementKind`를 명시할지
-- docs 연속 제한: 기본 `-MaxConsecutiveDocs 3`
+- docs 연속 제한: 기본 `-MaxConsecutiveDocs 3`. 이는 상한선이며 기본 자동 루프는 non-doc 개선을 우선한다
 - 실패 처리: 한 회차 실패 후 다음 시간에 계속 시도할지, 작업 자체를 중지할지
 - 리뷰 대응 한도: `-MaxReviewResponses` 값을 몇 회로 둘지
 - 실패 PR 교체 한도: `-MaxClosedPrReplacements` 값을 몇 회로 둘지
@@ -129,6 +129,8 @@ Unregister-ScheduledTask -TaskName ActionLedgerAutoImprove24h -Confirm:$false
 기존 open PR: 먼저 merge 또는 close
 AutoMerge: true
 MergeMethod: squash
-Scope/kind: auto, docs max 3 then feat/style/refactor
+Scope/kind: auto, feat/style/refactor 우선, docs는 필요 시 제한적으로 사용
 Failure policy: 해당 회차만 실패, 다음 시간에 재시도
 ```
+
+`-ImprovementKind docs`는 수동 override로 취급한다. 일반 스케줄에서는 비워두고 자동 선택을 쓰는 것을 권장한다.

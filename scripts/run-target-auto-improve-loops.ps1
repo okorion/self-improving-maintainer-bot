@@ -35,6 +35,9 @@ if ($MaxConsecutiveDocs -lt 1) {
 if ($ImprovementKind -and @("auto", "docs", "feat", "style", "refactor") -notcontains $ImprovementKind) {
   throw "Unsupported improvement kind: $ImprovementKind"
 }
+if ($NonDocsSequence.Count -lt 1) {
+  throw "NonDocsSequence must contain at least one non-docs kind."
+}
 foreach ($kind in $NonDocsSequence) {
   if (@("feat", "style", "refactor") -notcontains $kind) {
     throw "Unsupported non-docs kind in sequence: $kind"
@@ -144,23 +147,32 @@ function Resolve-ImprovementPlan {
     $kind = $ImprovementKind
   }
   elseif ($Scope) {
-    $kind = if ($Scope -eq "docs") { "docs" } else { "auto" }
+    $kind = if ($Scope -eq "docs") { "docs" } else { Get-NextNonDocsKind -ProfileName $ProfileName }
   }
   else {
+    $kind = Get-NextNonDocsKind -ProfileName $ProfileName
+  }
+  if ($kind -eq "docs" -and $ImprovementKind -ne "docs") {
     $state = Get-ImprovementState -ProfileName $ProfileName
-    if ([int]$state.docsStreak -lt $MaxConsecutiveDocs) {
-      $kind = "docs"
-    }
-    else {
-      $index = [int]$state.nonDocsIndex
-      $kind = $NonDocsSequence[$index % $NonDocsSequence.Count]
+    if ([int]$state.docsStreak -ge $MaxConsecutiveDocs) {
+      $kind = Get-NextNonDocsKind -ProfileName $ProfileName
     }
   }
   $resolvedScope = if ($Scope) { $Scope } else { Get-ScopeForKind -Kind $kind }
+  if ($kind -ne "docs") {
+    $resolvedScope = Get-ScopeForKind -Kind $kind
+  }
   return [pscustomobject]@{
     Kind = $kind
     Scope = $resolvedScope
   }
+}
+
+function Get-NextNonDocsKind {
+  param([string]$ProfileName)
+  $state = Get-ImprovementState -ProfileName $ProfileName
+  $index = [int]$state.nonDocsIndex
+  return $NonDocsSequence[$index % $NonDocsSequence.Count]
 }
 
 function Update-ImprovementState {
@@ -175,9 +187,7 @@ function Update-ImprovementState {
   elseif ($Kind -in @("feat", "style", "refactor")) {
     $next = ([int]$state.nonDocsIndex + 1) % $NonDocsSequence.Count
     $state.nonDocsIndex = $next
-    if ($next -eq 0) {
-      $state.docsStreak = 0
-    }
+    $state.docsStreak = 0
   }
   $state.lastKind = $Kind
   Save-ImprovementState -ProfileName $ProfileName -State $state
