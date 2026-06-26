@@ -306,9 +306,6 @@ function Test-Ruleset {
   if (-not $existingRulesetId) {
     throw "ruleset '$RulesetName' not found"
   }
-  if (-not $IncludeMergeQueue) {
-    return
-  }
   $output = gh api "repos/$Repo/rulesets/$existingRulesetId" 2>&1
   if ($LASTEXITCODE -ne 0) {
     throw ($output -join [Environment]::NewLine)
@@ -337,7 +334,12 @@ function Test-Ruleset {
     }
   }
   if ($ruleTypes -notcontains "merge_queue") {
-    throw "merge_queue rule is not enabled"
+    if ($IncludeMergeQueue) {
+      throw "merge_queue rule is not enabled"
+    }
+  }
+  elseif (-not $IncludeMergeQueue) {
+    throw "merge_queue rule is enabled but -IncludeMergeQueue was not requested"
   }
 }
 
