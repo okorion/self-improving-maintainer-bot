@@ -37,6 +37,6 @@
     "*.key"
   ],
   "maxFiles": 10,
-  "maxLines": 250,
+  "maxLines": 320,
   "autoMerge": false
 }
