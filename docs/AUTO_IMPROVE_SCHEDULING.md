@@ -11,7 +11,7 @@ prepare-target
   -> R0/R1/R2/R3 risk classification
   -> branch 생성
   -> 한국어 commit
-  -> PR 생성 또는 proposal-only 차단
+  -> 실제 변경사항 기반 PR 제목/본문 생성 또는 proposal-only 차단
   -> Codex red-team 리뷰
   -> 필요 시 review-response 커밋 후 재리뷰
   -> 대응 한도 초과 시 PR close 후 새 개선 후보 재시도
@@ -31,7 +31,9 @@ prepare-target
 
 - interval: 1시간
 - duration: 24시간
-- scope: `docs`
+- scope/kind: 자동 선택. 기본은 `docs`지만 docs 성공은 최대 3회 연속까지만 허용
+- non-docs sequence: `feat -> style -> refactor`
+- non-doc guard: `feat`, `style`, `refactor` 요청에서 docs-only 변경이 나오면 PR을 만들지 않고 같은 회차에서 새 후보를 재시도
 - merge method: squash
 - overlap policy: 이전 실행이 끝나지 않았으면 다음 실행은 건너뜀
 - review response: red-team FAIL 시 최대 2회 자동 대응
@@ -54,6 +56,14 @@ cd "E:\Project Archieve\self-improving-maintainer-bot"
 
 ```powershell
 .\scripts\auto-improve-target-once.ps1 -Profile living-shader-gallery -Scope docs -AutoMerge
+```
+
+특정 개선 유형을 직접 지정하려면:
+
+```powershell
+.\scripts\auto-improve-target-once.ps1 -Profile living-shader-gallery -Scope mixed -ImprovementKind feat -AutoMerge
+.\scripts\auto-improve-target-once.ps1 -Profile living-shader-gallery -Scope mixed -ImprovementKind style -AutoMerge
+.\scripts\auto-improve-target-once.ps1 -Profile living-shader-gallery -Scope mixed -ImprovementKind refactor -AutoMerge
 ```
 
 모든 overtura target profile을 3회씩 직렬 실행하려면:
@@ -104,7 +114,8 @@ Unregister-ScheduledTask -TaskName ActionLedgerAutoImprove24h -Confirm:$false
 - 기존 open PR 처리: merge할지, 닫을지, 그대로 둘지
 - 자동 merge 허용 여부: `-AutoMerge`를 켤지
 - merge 방식: `squash`, `merge`, `rebase` 중 하나
-- scope: `docs`만 돌릴지, `code` 또는 `mixed`까지 허용할지
+- scope/kind: 기본 자동 선택을 쓸지, `-Scope`와 `-ImprovementKind`를 명시할지
+- docs 연속 제한: 기본 `-MaxConsecutiveDocs 3`
 - 실패 처리: 한 회차 실패 후 다음 시간에 계속 시도할지, 작업 자체를 중지할지
 - 리뷰 대응 한도: `-MaxReviewResponses` 값을 몇 회로 둘지
 - 실패 PR 교체 한도: `-MaxClosedPrReplacements` 값을 몇 회로 둘지
@@ -118,6 +129,6 @@ Unregister-ScheduledTask -TaskName ActionLedgerAutoImprove24h -Confirm:$false
 기존 open PR: 먼저 merge 또는 close
 AutoMerge: true
 MergeMethod: squash
-Scope: docs
+Scope/kind: auto, docs max 3 then feat/style/refactor
 Failure policy: 해당 회차만 실패, 다음 시간에 재시도
 ```

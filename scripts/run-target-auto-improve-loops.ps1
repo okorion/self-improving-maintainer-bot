@@ -4,6 +4,9 @@ param(
   [string[]]$Profile = @(),
   [int]$Iterations = 3,
   [string]$Scope = "",
+  [string]$ImprovementKind = "",
+  [int]$MaxConsecutiveDocs = 3,
+  [string[]]$NonDocsSequence = @("feat", "style", "refactor"),
   [switch]$AutoMerge,
   [switch]$AllowLocalPublisherAuth,
   [int]$MaxReviewResponses = 2,
@@ -18,12 +21,24 @@ param(
 $ErrorActionPreference = "Stop"
 $BotRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 $OnceScript = Join-Path $BotRoot "scripts\auto-improve-target-once.ps1"
+$ScopeStateDir = Join-Path $BotRoot "runs\scheduler\scope-state"
 
 if ($Iterations -lt 1) {
   throw "Iterations must be 1 or greater."
 }
 if ($MaxClosedPrReplacements -lt 0) {
   throw "MaxClosedPrReplacements must be 0 or greater."
+}
+if ($MaxConsecutiveDocs -lt 1) {
+  throw "MaxConsecutiveDocs must be 1 or greater."
+}
+if ($ImprovementKind -and @("auto", "docs", "feat", "style", "refactor") -notcontains $ImprovementKind) {
+  throw "Unsupported improvement kind: $ImprovementKind"
+}
+foreach ($kind in $NonDocsSequence) {
+  if (@("feat", "style", "refactor") -notcontains $kind) {
+    throw "Unsupported non-docs kind in sequence: $kind"
+  }
 }
 
 if ($Profile.Count -eq 0) {
@@ -32,8 +47,148 @@ if ($Profile.Count -eq 0) {
     ForEach-Object { $_.BaseName }
 }
 
-function New-ChildArguments {
+function Resolve-ProfilePath {
+  param([string]$Name)
+  $candidates = @(
+    $Name,
+    "$Name.json",
+    (Join-Path "profiles" $Name),
+    (Join-Path "profiles" "$Name.json"),
+    (Join-Path "profiles\overtura" "$Name.json")
+  )
+  foreach ($candidate in $candidates) {
+    $path = if ([System.IO.Path]::IsPathRooted($candidate)) { $candidate } else { Join-Path $BotRoot $candidate }
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+      return (Resolve-Path -LiteralPath $path).Path
+    }
+  }
+  throw "Target profile not found: $Name"
+}
+
+function Get-ProfileData {
   param([string]$ProfileName)
+  $path = Resolve-ProfilePath -Name $ProfileName
+  return Get-Content -LiteralPath $path -Raw -Encoding utf8 | ConvertFrom-Json
+}
+
+function Get-StatePath {
+  param([string]$ProfileName)
+  return (Join-Path $ScopeStateDir "$ProfileName.json")
+}
+
+function Get-RecentMergedDocsStreak {
+  param(
+    [string]$Repo
+  )
+  if (-not $Repo) {
+    return 0
+  }
+  try {
+    $titles = @(gh pr list --repo $Repo --state merged --limit $MaxConsecutiveDocs --json title --jq ".[].title")
+  }
+  catch {
+    return 0
+  }
+  $count = 0
+  foreach ($title in $titles) {
+    if ($title -match "^\[docs\]") {
+      $count += 1
+    }
+    else {
+      break
+    }
+  }
+  return $count
+}
+
+function Get-ImprovementState {
+  param([string]$ProfileName)
+  New-Item -ItemType Directory -Force -Path $ScopeStateDir | Out-Null
+  $statePath = Get-StatePath -ProfileName $ProfileName
+  if (Test-Path -LiteralPath $statePath -PathType Leaf) {
+    return Get-Content -LiteralPath $statePath -Raw -Encoding utf8 | ConvertFrom-Json
+  }
+  $profileData = Get-ProfileData -ProfileName $ProfileName
+  $docsStreak = Get-RecentMergedDocsStreak -Repo ([string]$profileData.repository)
+  return [pscustomobject]@{
+    profile = $ProfileName
+    repository = [string]$profileData.repository
+    docsStreak = $docsStreak
+    nonDocsIndex = 0
+    lastKind = ""
+    updatedAt = ""
+  }
+}
+
+function Save-ImprovementState {
+  param(
+    [string]$ProfileName,
+    [object]$State
+  )
+  New-Item -ItemType Directory -Force -Path $ScopeStateDir | Out-Null
+  $State.updatedAt = (Get-Date -Format o)
+  $State | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Get-StatePath -ProfileName $ProfileName) -Encoding utf8
+}
+
+function Get-ScopeForKind {
+  param([string]$Kind)
+  if ($Kind -eq "docs") {
+    return "docs"
+  }
+  return "mixed"
+}
+
+function Resolve-ImprovementPlan {
+  param([string]$ProfileName)
+  if ($ImprovementKind -and $ImprovementKind -ne "auto") {
+    $kind = $ImprovementKind
+  }
+  elseif ($Scope) {
+    $kind = if ($Scope -eq "docs") { "docs" } else { "auto" }
+  }
+  else {
+    $state = Get-ImprovementState -ProfileName $ProfileName
+    if ([int]$state.docsStreak -lt $MaxConsecutiveDocs) {
+      $kind = "docs"
+    }
+    else {
+      $index = [int]$state.nonDocsIndex
+      $kind = $NonDocsSequence[$index % $NonDocsSequence.Count]
+    }
+  }
+  $resolvedScope = if ($Scope) { $Scope } else { Get-ScopeForKind -Kind $kind }
+  return [pscustomobject]@{
+    Kind = $kind
+    Scope = $resolvedScope
+  }
+}
+
+function Update-ImprovementState {
+  param(
+    [string]$ProfileName,
+    [string]$Kind
+  )
+  $state = Get-ImprovementState -ProfileName $ProfileName
+  if ($Kind -eq "docs") {
+    $state.docsStreak = [Math]::Min($MaxConsecutiveDocs, ([int]$state.docsStreak + 1))
+  }
+  elseif ($Kind -in @("feat", "style", "refactor")) {
+    $next = ([int]$state.nonDocsIndex + 1) % $NonDocsSequence.Count
+    $state.nonDocsIndex = $next
+    if ($next -eq 0) {
+      $state.docsStreak = 0
+    }
+  }
+  $state.lastKind = $Kind
+  Save-ImprovementState -ProfileName $ProfileName -State $state
+}
+
+function New-ChildArguments {
+  param(
+    [string]$ProfileName,
+    [string]$ResolvedScope,
+    [string]$ResolvedImprovementKind
+  )
   $arguments = @(
     "-NoProfile",
     "-ExecutionPolicy",
@@ -51,8 +206,11 @@ function New-ChildArguments {
     "-MergePollSeconds",
     [string]$MergePollSeconds
   )
-  if ($Scope) {
-    $arguments += @("-Scope", $Scope)
+  if ($ResolvedScope) {
+    $arguments += @("-Scope", $ResolvedScope)
+  }
+  if ($ResolvedImprovementKind) {
+    $arguments += @("-ImprovementKind", $ResolvedImprovementKind)
   }
   if ($AutoMerge) {
     $arguments += "-AutoMerge"
@@ -93,10 +251,18 @@ if ($ParallelProfiles -and $Profile.Count -gt 1) {
       "-MergeWaitTimeoutSeconds",
       [string]$MergeWaitTimeoutSeconds,
       "-MergePollSeconds",
-      [string]$MergePollSeconds
+      [string]$MergePollSeconds,
+      "-MaxConsecutiveDocs",
+      [string]$MaxConsecutiveDocs
     )
     if ($Scope) {
       $arguments += @("-Scope", $Scope)
+    }
+    if ($ImprovementKind) {
+      $arguments += @("-ImprovementKind", $ImprovementKind)
+    }
+    if ($NonDocsSequence.Count -gt 0) {
+      $arguments += @("-NonDocsSequence", $NonDocsSequence)
     }
     if ($AutoMerge) {
       $arguments += "-AutoMerge"
@@ -156,12 +322,16 @@ foreach ($profileName in $Profile) {
     while ($true) {
       $attemptLabel = $replacement + 1
       $maxAttemptLabel = $MaxClosedPrReplacements + 1
-      Write-Host "=== profile=$profileName iteration=$iteration/$Iterations replacement-attempt=$attemptLabel/$maxAttemptLabel ==="
-      $arguments = New-ChildArguments -ProfileName $profileName
+      $plan = Resolve-ImprovementPlan -ProfileName $profileName
+      Write-Host "=== profile=$profileName iteration=$iteration/$Iterations replacement-attempt=$attemptLabel/$maxAttemptLabel kind=$($plan.Kind) scope=$($plan.Scope) ==="
+      $arguments = New-ChildArguments -ProfileName $profileName -ResolvedScope $plan.Scope -ResolvedImprovementKind $plan.Kind
 
       & powershell @arguments
       $exitCode = $LASTEXITCODE
       if ($exitCode -eq 0) {
+        if (-not $DryRun) {
+          Update-ImprovementState -ProfileName $profileName -Kind $plan.Kind
+        }
         break
       }
       if ($exitCode -eq $ReviewFailureExitCode -and $replacement -lt $MaxClosedPrReplacements) {

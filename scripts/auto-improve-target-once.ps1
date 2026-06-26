@@ -3,6 +3,7 @@
 param(
   [string]$Profile,
   [string]$Scope = "",
+  [string]$ImprovementKind = "",
   [string]$TargetRepo = "",
   [string]$BaseBranch = "",
   [string]$BranchPrefix = "codex/auto-improve",
@@ -40,6 +41,7 @@ $LogPath = Join-Path $LogDir "$RunId.log"
 $PatchPath = Join-Path $LogDir "$RunId.patch"
 $RiskJsonPath = Join-Path $LogDir "$RunId-risk.json"
 $RiskMarkdownPath = Join-Path $LogDir "$RunId-risk.md"
+$ChangeSummaryJsonPath = Join-Path $LogDir "$RunId-change-summary.json"
 $RedteamPromptPath = Join-Path $LogDir "$RunId-redteam-prompt.md"
 $RedteamReportPath = Join-Path $LogDir "$RunId-redteam-report.md"
 $RedteamLastMessagePath = Join-Path $LogDir "$RunId-redteam-last-message.md"
@@ -1062,6 +1064,51 @@ function Assert-CleanTarget {
   }
 }
 
+function Test-DocsOnlyChange {
+  param([string[]]$ChangedFiles)
+  if ($ChangedFiles.Count -eq 0) {
+    return $false
+  }
+  foreach ($path in $ChangedFiles) {
+    $normalized = $path.Replace("\", "/")
+    $isDocsPath = (
+      $normalized -eq "README.md" -or
+      $normalized -eq "DESIGN.md" -or
+      $normalized -eq "CONTRIBUTING.md" -or
+      $normalized.StartsWith("docs/") -or
+      $normalized.StartsWith("maintainer-bot/")
+    )
+    if (-not $isDocsPath) {
+      return $false
+    }
+  }
+  return $true
+}
+
+function Reject-GeneratedCandidateForReplacement {
+  param(
+    [string]$TargetRoot,
+    [string]$Reason
+  )
+  Write-Log "Rejecting generated candidate before publish: $Reason"
+  Push-Location $TargetRoot
+  try {
+    git restore --worktree --staged -- . *>> $LogPath
+    if ($LASTEXITCODE -ne 0) {
+      throw "Failed to restore generated candidate changes."
+    }
+    git clean -fd *>> $LogPath
+    if ($LASTEXITCODE -ne 0) {
+      throw "Failed to clean generated candidate leftovers."
+    }
+  }
+  finally {
+    Pop-Location
+  }
+  Write-Log "Generated candidate discarded. Exiting with review failure code $ReviewFailureExitCode for replacement."
+  exit $ReviewFailureExitCode
+}
+
 function Assert-AllowedChanges {
   param(
     [string]$TargetRoot,
@@ -1138,6 +1185,11 @@ if (-not $BaseBranch) { $BaseBranch = "main" }
 
 if (-not $Scope -and $ProfileData) { $Scope = [string]$ProfileData.scope }
 if (-not $Scope) { $Scope = "docs" }
+if (-not $ImprovementKind -and $ProfileData -and $ProfileData.improvementKind) { $ImprovementKind = [string]$ProfileData.improvementKind }
+if (-not $ImprovementKind) { $ImprovementKind = "auto" }
+if (@("auto", "docs", "feat", "style", "refactor") -notcontains $ImprovementKind) {
+  throw "Unsupported improvement kind: $ImprovementKind"
+}
 
 $TargetWorktree = if ($ProfileData -and $ProfileData.worktree) {
   [string]$ProfileData.worktree
@@ -1198,6 +1250,7 @@ if ($DryRun) {
   Write-Log "Profile: $profileLabel"
   Write-Log "Target repo: $TargetRepo"
   Write-Log "Scope: $Scope"
+  Write-Log "Improvement kind: $ImprovementKind"
   Write-Log "Base branch: $BaseBranch"
   Write-Log "Allowed paths: $($AllowedPathPatterns -join ', ')"
   Write-Log "Denied paths: $($DeniedPathPatterns -join ', ')"
@@ -1218,7 +1271,7 @@ if ($DryRun) {
 
 New-Item -ItemType Directory -Path $LockDir -ErrorAction Stop | Out-Null
 try {
-  Write-Log "Auto improve run started. run_id=$RunId profile=$Profile target=$TargetRepo scope=$Scope auto_merge=$ResolvedAutoMerge"
+  Write-Log "Auto improve run started. run_id=$RunId profile=$Profile target=$TargetRepo scope=$Scope improvement_kind=$ImprovementKind auto_merge=$ResolvedAutoMerge"
   Invoke-CommandLine -Command "python -m self_maintainer_bot.cli prepare-target" -WorkingDirectory $BotRoot
   $TargetRoot = Get-TargetRoot
   Assert-CleanTarget -TargetRoot $TargetRoot
@@ -1234,7 +1287,7 @@ try {
   else {
     Invoke-WithPublisherEnvCleared {
       Invoke-CommandLine -Command "python -m self_maintainer_bot.cli eval-docs --fail-under 0" -WorkingDirectory $BotRoot
-      Invoke-CommandLine -Command "python -m self_maintainer_bot.cli codex-local-loop --scope $Scope --execute" -WorkingDirectory $BotRoot
+      Invoke-CommandLine -Command "python -m self_maintainer_bot.cli codex-local-loop --scope $Scope --improvement-kind $ImprovementKind --execute" -WorkingDirectory $BotRoot
     }
   }
 
@@ -1242,6 +1295,9 @@ try {
   if ($changed.Count -eq 0) {
     Write-Log "No target changes detected. Nothing to publish."
     exit 0
+  }
+  if (@("feat", "style", "refactor") -contains $ImprovementKind -and (Test-DocsOnlyChange -ChangedFiles $changed)) {
+    Reject-GeneratedCandidateForReplacement -TargetRoot $TargetRoot -Reason "improvement_kind=$ImprovementKind produced docs-only changes."
   }
   Save-PatchArtifact -TargetRoot $TargetRoot -OutputPath $PatchPath
   $Risk = Invoke-RiskClassifier -Scope $Scope
@@ -1274,6 +1330,8 @@ try {
   Invoke-CommandLine -Command "git diff --check" -WorkingDirectory $TargetRoot
   $DiffStat = Get-GitOutput -Arguments @("diff", "--stat") -WorkingDirectory $TargetRoot
   $DiffNumstat = Get-GitOutput -Arguments @("diff", "--numstat") -WorkingDirectory $TargetRoot
+  Invoke-CommandLine -Command "python -m self_maintainer_bot.cli summarize-target-change --kind $ImprovementKind --output-json `"$ChangeSummaryJsonPath`"" -WorkingDirectory $BotRoot
+  $ChangeSummary = Get-Content -LiteralPath $ChangeSummaryJsonPath -Raw -Encoding utf8 | ConvertFrom-Json
 
   $safeTarget = $TargetRepo.Replace("/", "-")
   $branchName = "$BranchPrefix-$safeTarget-$RunId"
@@ -1282,7 +1340,10 @@ try {
     Invoke-CommandLine -Command "git add -- `"$path`"" -WorkingDirectory $TargetRoot
   }
 
-  $commitFile = New-TemplateFile -TemplatePath $CommitTemplate -Values @{}
+  $commitFile = New-TemplateFile -TemplatePath $CommitTemplate -Values @{
+    PR_TITLE = [string]$ChangeSummary.title
+    COMMIT_BODY = [string]$ChangeSummary.commit_body
+  }
   try {
     Invoke-CommandLine -Command "git commit --trailer `"Co-authored-by: Codex`" -F `"$commitFile`"" -WorkingDirectory $TargetRoot
   }
@@ -1306,6 +1367,9 @@ try {
     INPUT_COMMIT = $InputCommit
     PROFILE_VERSION = $ProfileVersion
     SCOPE = $Scope
+    IMPROVEMENT_KIND = [string]$ChangeSummary.kind
+    PR_INTENT = [string]$ChangeSummary.intent
+    CHANGE_SUMMARY = [string]$ChangeSummary.summary_markdown
     MAX_RISK = $Risk.max_risk
     PUBLISH_MODE = $Risk.publish_mode
     CHANGED_FILE_COUNT = $Risk.changed_file_count
@@ -1322,7 +1386,7 @@ try {
     CHANGED_FILES = $changedList
     VERIFY_COMMANDS = $verifyList
   }
-  $title = (Get-Content -LiteralPath $CommitTemplate -Encoding utf8 | Select-Object -First 1)
+  $title = [string]$ChangeSummary.title
   try {
     $prArgs = @("pr", "create", "--repo", $TargetRepo, "--base", $BaseBranch, "--head", $branchName, "--title", $title, "--body-file", $prBodyFile)
     if ($Risk.publish_mode -eq "draft_pull_request") {

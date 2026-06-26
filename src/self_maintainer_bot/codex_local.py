@@ -91,6 +91,7 @@ def write_codex_task(
     *,
     goal: str,
     scope: str,
+    improvement_kind: str = "auto",
     output_path: Path | None = None,
     eval_report_path: Path | None = None,
 ) -> Path:
@@ -108,6 +109,7 @@ def write_codex_task(
         settings=settings,
         goal=goal,
         scope=scope,
+        improvement_kind=improvement_kind,
         eval_report_path=report_path,
         failed=failed,
     )
@@ -238,6 +240,7 @@ def run_codex_local_loop(
     goal: str,
     scope: str,
     execute: bool,
+    improvement_kind: str = "auto",
     model: str | None = None,
     sandbox: str = "workspace-write",
     skip_verify: bool = False,
@@ -252,6 +255,7 @@ def run_codex_local_loop(
         settings,
         goal=goal,
         scope=scope,
+        improvement_kind=improvement_kind,
         eval_report_path=report_path,
     )
     print(f"Codex task written: {task_path}")
@@ -276,6 +280,7 @@ def render_codex_task(
     settings: Settings,
     goal: str,
     scope: str,
+    improvement_kind: str,
     eval_report_path: Path | None,
     failed: list[EvalResult],
 ) -> str:
@@ -292,6 +297,12 @@ def render_codex_task(
         "## Goal",
         "",
         goal.strip(),
+        "",
+        "## Improvement Type",
+        "",
+        f"- Requested kind: `{improvement_kind}`",
+        "",
+        *_improvement_kind_guidance(improvement_kind),
         "",
         "## Repository",
         "",
@@ -362,13 +373,22 @@ def render_codex_task(
                 ]
             )
     else:
-        lines.extend(
-            [
-                "",
-                "실패한 eval case가 없습니다. no-op 또는 낮은 위험의 문서 정리를 선호하세요.",
-                "",
-            ]
-        )
+        if improvement_kind == "docs":
+            lines.extend(
+                [
+                    "",
+                    "실패한 eval case가 없습니다. no-op 또는 낮은 위험의 문서 정리를 선호하세요.",
+                    "",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    "",
+                    "실패한 eval case가 없습니다. docs-only 변경이나 no-op 대신 requested kind에 맞는 작고 검증 가능한 개선을 찾으세요.",
+                    "",
+                ]
+            )
 
     lines.extend(
         [
@@ -380,6 +400,36 @@ def render_codex_task(
         ]
     )
     return "\n".join(lines)
+
+
+def _improvement_kind_guidance(improvement_kind: str) -> list[str]:
+    guidance = {
+        "docs": [
+            "- Focus on documentation, Korean copy, examples, backlog, or maintainer-bot guidance.",
+            "- Do not change runtime behavior for a docs task.",
+        ],
+        "feat": [
+            "- Add or improve one small user-visible feature within the allowed paths.",
+            "- Avoid workflow, secret, auth, dependency, and infra changes.",
+            "- Do not satisfy a feat task with docs-only changes.",
+        ],
+        "style": [
+            "- Improve visual polish, layout, responsive behavior, accessibility, or CSS clarity.",
+            "- Keep behavior stable unless a tiny UI interaction fix is required.",
+            "- Do not satisfy a style task with docs-only changes.",
+        ],
+        "refactor": [
+            "- Simplify structure, naming, duplication, or local helper code without changing behavior.",
+            "- Keep the diff small and easy to verify with existing checks.",
+            "- Do not satisfy a refactor task with docs-only changes.",
+        ],
+    }
+    if improvement_kind in guidance:
+        return guidance[improvement_kind]
+    return [
+        "- Choose the most valuable safe improvement kind for this repository.",
+        "- Prefer feat, style, or refactor when recent successful loops were docs-only.",
+    ]
 
 
 def allowed_paths_for_scope(scope: str) -> list[str]:

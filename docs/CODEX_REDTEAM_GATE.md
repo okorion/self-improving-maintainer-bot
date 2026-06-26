@@ -7,7 +7,7 @@
 ```text
 worker generates patch
 publisher pushes branch
-publisher creates PR
+publisher creates PR with a title/body based on the actual changed files
 publisher sets codex-redteam=pending on the current head
 Codex CLI reviews the PR diff in read-only mode
 publisher comments the red-team report
@@ -40,6 +40,7 @@ runner waits until PR state is MERGED
 - R2 draft PRs can receive a red-team report, but auto-merge remains disabled.
 - R1 PRs can auto-merge only after `check` and `codex-redteam` are both green.
 - Auto-merge mode waits for the PR to reach `MERGED` before the next loop starts.
+- PR title and body must describe the actual diff, not merely that the PR was created by the self-improvement loop.
 
 ## Branch Protection Mode
 

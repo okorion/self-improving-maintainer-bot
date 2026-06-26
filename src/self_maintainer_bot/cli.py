@@ -14,6 +14,7 @@ from self_maintainer_bot.codex_local import (
     run_codex_task,
     write_codex_task,
 )
+from self_maintainer_bot.change_summary import write_target_change_summary
 from self_maintainer_bot.config import load_settings
 from self_maintainer_bot.docs_eval import run_docs_eval
 from self_maintainer_bot.docs_patch import propose_docs_patch
@@ -144,6 +145,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["docs", "prompts", "evals", "code", "mixed"],
         default="docs",
     )
+    codex_task.add_argument(
+        "--improvement-kind",
+        choices=["auto", "docs", "feat", "style", "refactor"],
+        default="auto",
+    )
     codex_task.add_argument("--output", help="Output task file path.")
 
     run_codex = subparsers.add_parser(
@@ -175,6 +181,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="docs",
     )
     codex_loop.add_argument(
+        "--improvement-kind",
+        choices=["auto", "docs", "feat", "style", "refactor"],
+        default="auto",
+    )
+    codex_loop.add_argument(
         "--execute",
         action="store_true",
         help="Execute the generated task with Codex CLI.",
@@ -196,6 +207,17 @@ def build_parser() -> argparse.ArgumentParser:
     classify.add_argument("--output-json")
     classify.add_argument("--output-md")
     classify.add_argument("--path", action="append", default=[])
+
+    summarize_change = subparsers.add_parser(
+        "summarize-target-change",
+        help="Write a title and PR summary from the current target diff.",
+    )
+    summarize_change.add_argument(
+        "--kind",
+        choices=["auto", "docs", "feat", "style", "refactor"],
+        default="auto",
+    )
+    summarize_change.add_argument("--output-json")
 
     return parser
 
@@ -364,6 +386,7 @@ def main(argv: list[str] | None = None) -> int:
             settings,
             goal=args.goal,
             scope=args.scope,
+            improvement_kind=args.improvement_kind,
             output_path=output_path,
         )
         print(f"Codex task written: {path}")
@@ -394,6 +417,7 @@ def main(argv: list[str] | None = None) -> int:
             settings,
             goal=args.goal,
             scope=args.scope,
+            improvement_kind=args.improvement_kind,
             execute=args.execute,
             model=args.model,
             sandbox=args.sandbox,
@@ -429,6 +453,15 @@ def main(argv: list[str] | None = None) -> int:
             markdown_path=Path(args.output_md) if args.output_md else None,
         )
         print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "summarize-target-change":
+        summary = write_target_change_summary(
+            settings,
+            kind=args.kind,
+            output_json=Path(args.output_json) if args.output_json else None,
+        )
+        print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
         return 0
 
     raise AssertionError(f"Unhandled command: {args.command}")

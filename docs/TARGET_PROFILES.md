@@ -20,6 +20,7 @@ profile 이름은 다음 두 형식을 지원한다.
 - `defaultBranch`: 기본 브랜치
 - `worktree`: 중앙 봇이 clone/update할 로컬 target worktree
 - `scope`: 기본 Codex 작업 scope
+- `improvementKind`: 선택 값. `docs`, `feat`, `style`, `refactor`, `auto` 중 하나이며 없으면 scheduler가 자동 선택한다.
 - `docPaths`: eval과 task context에 포함할 target 문서 경로
 - `evalsPath`: target repo 안의 eval JSONL 경로
 - `verifyCommands`: publish 전에 target worktree에서 실행할 검증 명령
@@ -27,6 +28,8 @@ profile 이름은 다음 두 형식을 지원한다.
 - `denyPaths`: R3 proposal-only로 분류하고 자동 PR 게시를 차단할 경로
 - `maxFiles`, `maxLines`: 한 PR 변경량 제한
 - `autoMerge`: profile 기본 자동 merge 여부
+
+`run-target-auto-improve-loops.ps1`의 기본 자동 선택은 profile별 최근 성공 상태를 보고 docs PR을 최대 3회 연속까지만 허용한다. 이후에는 `feat`, `style`, `refactor` 순서로 작고 검증 가능한 개선을 우선한다.
 
 ## R3 기본 정책
 

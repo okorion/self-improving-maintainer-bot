@@ -1,6 +1,8 @@
 ## 목적
 
-로컬 Codex 자가 개선 루프가 생성한 target repo 변경을 검증 후 반영합니다.
+{{PR_INTENT}}
+
+{{CHANGE_SUMMARY}}
 
 ## 주요 변경
 
@@ -10,6 +12,7 @@
 - input commit: `{{INPUT_COMMIT}}`
 - profile/control-plane commit: `{{PROFILE_VERSION}}`
 - scope: `{{SCOPE}}`
+- improvement kind: `{{IMPROVEMENT_KIND}}`
 - max risk: `{{MAX_RISK}}`
 - publish mode: `{{PUBLISH_MODE}}`
 - changed files: `{{CHANGED_FILE_COUNT}}`
