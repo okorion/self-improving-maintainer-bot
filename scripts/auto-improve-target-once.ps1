@@ -497,12 +497,12 @@ Check for:
 3. dependency/build/script changes that should not auto-merge as R1.
 4. accidental broad rewrites or unrelated files.
 5. broken Korean documentation, obvious UI copy regressions, or invalid project instructions.
-6. mismatch between the PR body, risk report, and actual diff.
+6. mismatch between the PR body, risk report, verification summary, and actual diff.
 
 Decision rules:
 
 - PASS only when the diff is safe to merge automatically under the current publish mode.
-- FAIL if you are unsure, if a protected path is present, if required evidence is missing, or if the change needs human judgment.
+- FAIL if you are unsure, if a protected path is present, if the PR verification summary is missing or contradicted, or if the change needs human judgment.
 - R2 draft PRs may pass review, but they must not auto-merge.
 - R3/proposal-only changes must fail if they reach this review.
 
@@ -1391,6 +1391,10 @@ try {
     "python -m self_maintainer_bot.cli eval-docs --fail-under 1",
     "git diff --check"
   ) | ForEach-Object { "- ``$_``" }) -join [Environment]::NewLine
+  $verifySummary = ($TargetVerifyCommands + @(
+    "python -m self_maintainer_bot.cli eval-docs --fail-under 1",
+    "git diff --check"
+  ) | ForEach-Object { "- ``$_``" }) -join [Environment]::NewLine
   $prBodyFile = New-TemplateFile -TemplatePath $PrTemplate -Values @{
     RUN_ID = $RunId
     PROFILE = if ($Profile) { $Profile } else { "(none)" }
@@ -1416,6 +1420,7 @@ try {
     LOG_PATH = $LogPath
     CHANGED_FILES = $changedList
     VERIFY_COMMANDS = $verifyList
+    VERIFY_SUMMARY = $verifySummary
   }
   $title = [string]$ChangeSummary.title
   try {

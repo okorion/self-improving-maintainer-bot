@@ -13,6 +13,12 @@
 - 게시 방식: `{{PUBLISH_MODE}}`
 - red-team 상태 컨텍스트: `{{REDTEAM_STATUS_CONTEXT}}`
 
+## 검증 요약
+
+PR 생성 전에 다음 자동 검증을 통과했습니다.
+
+{{VERIFY_SUMMARY}}
+
 ## 후속 확인
 
 - 자동 red-team 리뷰가 통과한 뒤 병합합니다.
