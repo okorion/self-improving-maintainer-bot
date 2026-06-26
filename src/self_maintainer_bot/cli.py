@@ -30,6 +30,13 @@ from self_maintainer_bot.target_repo import active_evals_path, prepare_target_re
 from self_maintainer_bot.triage import label_definitions, suggest_labels
 
 
+def _goal_from_args(args: argparse.Namespace) -> str:
+    goal_file = getattr(args, "goal_file", None)
+    if goal_file:
+        return Path(goal_file).read_text(encoding="utf-8")
+    return args.goal
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="maintainer-bot")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -141,6 +148,10 @@ def build_parser() -> argparse.ArgumentParser:
         default="Improve the repository based on the latest documentation eval signal.",
     )
     codex_task.add_argument(
+        "--goal-file",
+        help="Read the Codex task goal from a UTF-8 text file.",
+    )
+    codex_task.add_argument(
         "--scope",
         choices=["docs", "prompts", "evals", "code", "mixed"],
         default="docs",
@@ -174,6 +185,10 @@ def build_parser() -> argparse.ArgumentParser:
     codex_loop.add_argument(
         "--goal",
         default="Improve the repository based on the latest documentation eval signal.",
+    )
+    codex_loop.add_argument(
+        "--goal-file",
+        help="Read the Codex task goal from a UTF-8 text file.",
     )
     codex_loop.add_argument(
         "--scope",
@@ -384,7 +399,7 @@ def main(argv: list[str] | None = None) -> int:
         output_path = settings.root / args.output if args.output else None
         path = write_codex_task(
             settings,
-            goal=args.goal,
+            goal=_goal_from_args(args),
             scope=args.scope,
             improvement_kind=args.improvement_kind,
             output_path=output_path,
@@ -415,7 +430,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "codex-local-loop":
         task_path, result = run_codex_local_loop(
             settings,
-            goal=args.goal,
+            goal=_goal_from_args(args),
             scope=args.scope,
             improvement_kind=args.improvement_kind,
             execute=args.execute,

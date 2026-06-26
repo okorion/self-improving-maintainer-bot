@@ -51,6 +51,7 @@ $PatchPath = Join-Path $LogDir "$RunId.patch"
 $RiskJsonPath = Join-Path $LogDir "$RunId-risk.json"
 $RiskMarkdownPath = Join-Path $LogDir "$RunId-risk.md"
 $ChangeSummaryJsonPath = Join-Path $LogDir "$RunId-change-summary.json"
+$GoalPath = Join-Path $LogDir "$RunId-goal.txt"
 $RedteamPromptPath = Join-Path $LogDir "$RunId-redteam-prompt.md"
 $RedteamReportPath = Join-Path $LogDir "$RunId-redteam-report.md"
 $RedteamLastMessagePath = Join-Path $LogDir "$RunId-redteam-last-message.md"
@@ -203,16 +204,6 @@ $recentPrs
 
 Inspect this target repository's README, DESIGN/docs, source, UI behavior, and current git state before editing. Choose a small user-visible feat, style, or refactor change that fits this repository's own gaps. Do not use docs-only changes for a $Kind task unless $Kind is docs.
 "@
-}
-
-function Convert-ToCommandArgumentText {
-  param([string]$Value)
-  if (-not $Value) {
-    return ""
-  }
-  $text = $Value.Replace('"', "'")
-  $text = $text -replace "\s+", " "
-  return $text.Trim()
 }
 
 function Invoke-VisualCapture {
@@ -1474,8 +1465,20 @@ try {
     $BeforeCapture = Invoke-VisualCapture -TargetRoot $TargetRoot -Repo $TargetRepo -Phase "before"
     Invoke-WithPublisherEnvCleared {
       Invoke-CommandLine -Command "python -m self_maintainer_bot.cli eval-docs --fail-under 0" -WorkingDirectory $BotRoot
-      $targetGoal = Convert-ToCommandArgumentText (Get-TargetGoal -Repo $TargetRepo -Kind $ImprovementKind -ProfileObject $ProfileData)
-      Invoke-CommandLine -Command "python -m self_maintainer_bot.cli codex-local-loop --goal `"$targetGoal`" --scope $Scope --improvement-kind $ImprovementKind --execute" -WorkingDirectory $BotRoot
+      $targetGoal = Get-TargetGoal -Repo $TargetRepo -Kind $ImprovementKind -ProfileObject $ProfileData
+      [System.IO.File]::WriteAllText($GoalPath, $targetGoal, $script:Utf8NoBom)
+      Invoke-NativeCommand -FilePath "python" -Arguments @(
+        "-m",
+        "self_maintainer_bot.cli",
+        "codex-local-loop",
+        "--goal-file",
+        $GoalPath,
+        "--scope",
+        $Scope,
+        "--improvement-kind",
+        $ImprovementKind,
+        "--execute"
+      ) -WorkingDirectory $BotRoot
     }
   }
 

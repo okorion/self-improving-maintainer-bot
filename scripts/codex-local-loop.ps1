@@ -3,6 +3,7 @@ param(
   [ValidateSet("docs", "prompts", "evals", "code", "mixed")]
   [string]$Scope = "docs",
   [string]$Goal = "Improve the repository based on the latest documentation eval signal.",
+  [string]$GoalFile = "",
   [string]$Model = "",
   [ValidateSet("read-only", "workspace-write")]
   [string]$Sandbox = "workspace-write",
@@ -17,9 +18,15 @@ $argsList = @(
   "-m", "self_maintainer_bot.cli",
   "codex-local-loop",
   "--scope", $Scope,
-  "--goal", $Goal,
   "--sandbox", $Sandbox
 )
+
+if ($GoalFile) {
+  $argsList += @("--goal-file", $GoalFile)
+}
+else {
+  $argsList += @("--goal", $Goal)
+}
 
 if ($Execute) {
   $argsList += "--execute"
