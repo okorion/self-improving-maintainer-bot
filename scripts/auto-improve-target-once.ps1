@@ -290,12 +290,38 @@ function Set-CommitStatus {
     [string]$Context,
     [string]$Description
   )
-  Invoke-GhNative -Arguments @(
+  $arguments = @(
     "api", "-X", "POST", "repos/$Repo/statuses/$Sha",
     "-f", "state=$State",
     "-f", "context=$Context",
     "-f", "description=$Description"
   )
+  try {
+    Invoke-GhNative -Arguments $arguments
+    return
+  }
+  catch {
+    $publisherError = $_.Exception.Message
+    $processGhToken = [Environment]::GetEnvironmentVariable("GH_TOKEN", "Process")
+    if ($processGhToken -and $AllowLocalPublisherAuth) {
+      Write-Log "WARNING Commit status update failed with publisher token; retrying with local gh auth. $publisherError"
+      [Environment]::SetEnvironmentVariable("GH_TOKEN", $null, "Process")
+      try {
+        Invoke-GhNative -Arguments $arguments
+        return
+      }
+      catch {
+        Write-Log "WARNING Commit status update failed with local gh auth too; continuing without status context. $($_.Exception.Message)"
+        return
+      }
+      finally {
+        [Environment]::SetEnvironmentVariable("GH_TOKEN", $processGhToken, "Process")
+      }
+    }
+
+    Write-Log "WARNING Commit status update failed; continuing without status context. $publisherError"
+    return
+  }
 }
 
 function Get-CodexExecutable {
