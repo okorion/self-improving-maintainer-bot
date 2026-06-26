@@ -35,6 +35,9 @@ if ($MaxConsecutiveDocs -lt 1) {
 if ($ImprovementKind -and @("auto", "docs", "feat", "style", "refactor") -notcontains $ImprovementKind) {
   throw "Unsupported improvement kind: $ImprovementKind"
 }
+if ($NonDocsSequence.Count -eq 1 -and $NonDocsSequence[0] -match ",") {
+  $NonDocsSequence = @($NonDocsSequence[0].Split(",") | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
 if ($NonDocsSequence.Count -lt 1) {
   throw "NonDocsSequence must contain at least one non-docs kind."
 }
@@ -295,9 +298,7 @@ if ($ParallelProfiles -and $Profile.Count -gt 1) {
     }
     if ($NonDocsSequence.Count -gt 0) {
       $arguments += "-NonDocsSequence"
-      foreach ($kind in $NonDocsSequence) {
-        $arguments += $kind
-      }
+      $arguments += ($NonDocsSequence -join ",")
     }
     if ($AutoMerge) {
       $arguments += "-AutoMerge"
