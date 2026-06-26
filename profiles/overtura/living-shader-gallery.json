@@ -29,6 +29,7 @@
     "src/**",
     "package.json",
     "pnpm-lock.yaml",
+    "vercel.json",
     "vite.config.*",
     "tsconfig*.json",
     "eslint.config.*",
