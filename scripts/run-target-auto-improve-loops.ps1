@@ -272,7 +272,10 @@ if ($ParallelProfiles -and $Profile.Count -gt 1) {
       $arguments += @("-ImprovementKind", $ImprovementKind)
     }
     if ($NonDocsSequence.Count -gt 0) {
-      $arguments += @("-NonDocsSequence", $NonDocsSequence)
+      $arguments += "-NonDocsSequence"
+      foreach ($kind in $NonDocsSequence) {
+        $arguments += $kind
+      }
     }
     if ($AutoMerge) {
       $arguments += "-AutoMerge"
