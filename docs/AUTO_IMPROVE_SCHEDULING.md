@@ -14,6 +14,7 @@ prepare-target
   -> PR 생성 또는 proposal-only 차단
   -> Codex red-team 리뷰
   -> 필요 시 review-response 커밋 후 재리뷰
+  -> 대응 한도 초과 시 PR close 후 새 개선 후보 재시도
   -> CI 통과 확인
   -> merge queue / auto merge 요청
   -> PR이 MERGED 상태가 될 때까지 대기
@@ -34,6 +35,7 @@ prepare-target
 - merge method: squash
 - overlap policy: 이전 실행이 끝나지 않았으면 다음 실행은 건너뜀
 - review response: red-team FAIL 시 최대 2회 자동 대응
+- closed PR replacement: review-response 한도 초과로 닫힌 PR은 성공 회차로 세지 않고 같은 iteration에서 새 후보를 찾음
 - merge wait: auto-merge 요청 후 실제 `MERGED` 상태까지 대기
 - allowed publish paths: `README.md`, `CONTRIBUTING.md`, `docs/`
 - R2 publish: draft PR only
@@ -99,6 +101,7 @@ Unregister-ScheduledTask -TaskName ActionLedgerAutoImprove24h -Confirm:$false
 - scope: `docs`만 돌릴지, `code` 또는 `mixed`까지 허용할지
 - 실패 처리: 한 회차 실패 후 다음 시간에 계속 시도할지, 작업 자체를 중지할지
 - 리뷰 대응 한도: `-MaxReviewResponses` 값을 몇 회로 둘지
+- 실패 PR 교체 한도: `-MaxClosedPrReplacements` 값을 몇 회로 둘지
 - merge 대기 시간: `-MergeWaitTimeoutSeconds` 값을 몇 초로 둘지
 - 변경 한도: 한 회차에서 허용할 파일 수나 라인 수 제한을 둘지
 - 실행 환경: PC 절전 방지, Codex 로그인 유지, GitHub CLI 인증 유지

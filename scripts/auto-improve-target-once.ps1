@@ -15,6 +15,8 @@ param(
   [string]$RedteamStatusContext = "codex-redteam",
   [switch]$SkipRedteam,
   [int]$MaxReviewResponses = 2,
+  [bool]$ClosePrOnReviewFailure = $true,
+  [int]$ReviewFailureExitCode = 20,
   [int]$MergeWaitTimeoutSeconds = 900,
   [int]$MergePollSeconds = 15,
   [ValidateSet("squash", "merge", "rebase")]
@@ -696,6 +698,77 @@ function Wait-ForPullRequestMerged {
   }
 }
 
+function Switch-TargetToBaseForReplacement {
+  param(
+    [string]$TargetRoot,
+    [string]$BaseBranch,
+    [string]$BranchName
+  )
+  Write-Log "Preparing target worktree for replacement attempt."
+  Push-Location $TargetRoot
+  try {
+    git switch $BaseBranch *>> $LogPath
+    if ($LASTEXITCODE -ne 0) {
+      Write-Log "Clean switch to $BaseBranch failed; forcing switch because the current branch only contains generated failed-review changes."
+      git switch -f $BaseBranch *>> $LogPath
+      if ($LASTEXITCODE -ne 0) {
+        throw "Failed to switch target worktree to $BaseBranch."
+      }
+    }
+
+    git pull --ff-only origin $BaseBranch *>> $LogPath
+    if ($LASTEXITCODE -ne 0) {
+      throw "Failed to fast-forward target worktree base branch."
+    }
+
+    git branch -D $BranchName *>> $LogPath
+    if ($LASTEXITCODE -ne 0) {
+      Write-Log "Local branch cleanup skipped or failed for $BranchName."
+    }
+
+    $remaining = git status --porcelain
+    if ($LASTEXITCODE -ne 0) {
+      throw "Failed to inspect target worktree after replacement cleanup."
+    }
+    if ($remaining) {
+      Write-Log "Cleaning generated untracked leftovers before replacement attempt."
+      git clean -fd *>> $LogPath
+      if ($LASTEXITCODE -ne 0) {
+        throw "Failed to clean generated target leftovers."
+      }
+    }
+  }
+  finally {
+    Pop-Location
+  }
+  Assert-CleanTarget -TargetRoot $TargetRoot
+}
+
+function Close-ReviewFailedPullRequest {
+  param(
+    [string]$Repo,
+    [string]$PrNumber,
+    [string]$BranchName,
+    [string]$TargetRoot,
+    [string]$BaseBranch,
+    [string]$Reason,
+    [string]$ReportPath
+  )
+  if (-not $ClosePrOnReviewFailure) {
+    throw $Reason
+  }
+
+  $comment = "Codex red-team review response limit was reached. Closing this PR and allowing the scheduler to search for a new improvement candidate. Reason: $Reason"
+  if ($ReportPath) {
+    $comment = "$comment Report: $ReportPath"
+  }
+  Write-Log "Closing PR #$PrNumber after review failure: $Reason"
+  Invoke-GhNative -Arguments @("pr", "close", $PrNumber, "--repo", $Repo, "--comment", $comment, "--delete-branch")
+  Switch-TargetToBaseForReplacement -TargetRoot $TargetRoot -BaseBranch $BaseBranch -BranchName $BranchName
+  Write-Log "Closed PR #$PrNumber. Exiting with review failure code $ReviewFailureExitCode so the batch runner can open a replacement PR."
+  exit $ReviewFailureExitCode
+}
+
 function Get-TargetRoot {
   $code = "from self_maintainer_bot.config import load_settings; from self_maintainer_bot.target_repo import target_root; print(target_root(load_settings()))"
   Push-Location $BotRoot
@@ -997,6 +1070,8 @@ if ($DryRun) {
   Write-Log "Red-team status context: $RedteamStatusContext"
   Write-Log "Skip red-team: $($SkipRedteam.IsPresent)"
   Write-Log "Max review responses: $MaxReviewResponses"
+  Write-Log "Close PR on review failure: $ClosePrOnReviewFailure"
+  Write-Log "Review failure exit code: $ReviewFailureExitCode"
   Write-Log "Merge wait timeout seconds: $MergeWaitTimeoutSeconds"
   Write-Log "Merge poll seconds: $MergePollSeconds"
   exit 0
@@ -1157,10 +1232,24 @@ try {
 
       Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "failure" -Context $RedteamStatusContext -Description "Codex red-team review failed."
       if ($reviewAttempt -ge $maxReviewAttempts) {
-        throw "Codex red-team review failed after $reviewAttempt attempt(s). See $($redteamResult.ReportPath)"
+        Close-ReviewFailedPullRequest `
+          -Repo $TargetRepo `
+          -PrNumber $prNumber `
+          -BranchName $branchName `
+          -TargetRoot $TargetRoot `
+          -BaseBranch $BaseBranch `
+          -Reason "Codex red-team review failed after $reviewAttempt attempt(s)." `
+          -ReportPath $redteamResult.ReportPath
       }
       if ($Risk.publish_mode -ne "pull_request") {
-        throw "Codex red-team review failed for publish_mode=$($Risk.publish_mode); automatic review response is disabled outside pull_request mode."
+        Close-ReviewFailedPullRequest `
+          -Repo $TargetRepo `
+          -PrNumber $prNumber `
+          -BranchName $branchName `
+          -TargetRoot $TargetRoot `
+          -BaseBranch $BaseBranch `
+          -Reason "Codex red-team review failed for publish_mode=$($Risk.publish_mode); automatic review response is disabled outside pull_request mode." `
+          -ReportPath $redteamResult.ReportPath
       }
 
       $responseSummaryPath = Invoke-CodexReviewResponse `
@@ -1178,7 +1267,14 @@ try {
 
       $responseChanged = Get-ChangedFiles -TargetRoot $TargetRoot
       if ($responseChanged.Count -eq 0) {
-        throw "Review response attempt $reviewAttempt produced no target changes. See $responseSummaryPath"
+        Close-ReviewFailedPullRequest `
+          -Repo $TargetRepo `
+          -PrNumber $prNumber `
+          -BranchName $branchName `
+          -TargetRoot $TargetRoot `
+          -BaseBranch $BaseBranch `
+          -Reason "Review response attempt $reviewAttempt produced no target changes." `
+          -ReportPath $responseSummaryPath
       }
       $responsePatchPath = Get-AttemptArtifactPath -Name "review-response" -Attempt $reviewAttempt -Extension "patch"
       Save-PatchArtifact -TargetRoot $TargetRoot -OutputPath $responsePatchPath
@@ -1198,7 +1294,14 @@ try {
       $Risk = Invoke-RiskClassifier -Scope $Scope
       Write-Log "Review response risk classification: max_risk=$($Risk.max_risk) publish_mode=$($Risk.publish_mode)"
       if ($Risk.publish_mode -ne "pull_request") {
-        throw "Review response exceeded auto-merge risk budget: publish_mode=$($Risk.publish_mode). See $RiskMarkdownPath"
+        Close-ReviewFailedPullRequest `
+          -Repo $TargetRepo `
+          -PrNumber $prNumber `
+          -BranchName $branchName `
+          -TargetRoot $TargetRoot `
+          -BaseBranch $BaseBranch `
+          -Reason "Review response exceeded auto-merge risk budget: publish_mode=$($Risk.publish_mode)." `
+          -ReportPath $RiskMarkdownPath
       }
 
       foreach ($path in $responseChanged) {

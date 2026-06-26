@@ -14,6 +14,8 @@ publisher comments the red-team report
 if review fails, Codex responds with a scoped fix commit
 publisher pushes the response commit
 Codex CLI re-reviews the updated PR
+if the response limit is reached, publisher closes the PR
+batch runner starts a replacement improvement candidate
 publisher sets codex-redteam=success or failure on the current head
 CI check + codex-redteam pass
 merge queue / auto merge
@@ -29,6 +31,8 @@ runner waits until PR state is MERGED
 - A failed red-team review can be handled by a bounded review-response loop.
 - Review response runs with `--sandbox workspace-write --full-auto`, but publisher token environment variables are still cleared.
 - Review response must stay within target `allowPaths` and is reclassified before it can be committed.
+- If the bounded review-response loop still fails, the PR is closed and does not count as a completed iteration.
+- The batch runner retries the same iteration with a fresh improvement candidate up to `MaxClosedPrReplacements`.
 - R3/proposal-only changes must not reach PR publish.
 - R2 draft PRs can receive a red-team report, but auto-merge remains disabled.
 - R1 PRs can auto-merge only after `check` and `codex-redteam` are both green.
@@ -85,6 +89,7 @@ Tune review response and merge waiting:
 
 ```powershell
 .\scripts\auto-improve-target-once.ps1 -Profile no-js-visual-lab -AutoMerge -MaxReviewResponses 2 -MergeWaitTimeoutSeconds 900 -MergePollSeconds 15
+.\scripts\run-target-auto-improve-loops.ps1 -Iterations 3 -AutoMerge -MaxReviewResponses 2 -MaxClosedPrReplacements 2
 ```
 
 Skip red-team only for emergency diagnostics:
