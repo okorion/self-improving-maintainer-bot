@@ -70,3 +70,11 @@
 ## 권장 반복 수
 
 각 repo별로 최소 4-5회 반복하되, 첫 반복은 항상 R0 또는 R1 no auto-merge로 시작한다.
+## Codex Red-Team Gate
+
+별도 reviewer identity 없이 루프를 돌릴 때는 `codex-redteam` status check가 GitHub approval을 대신한다.
+
+- R1 PR은 `check`와 `codex-redteam`이 모두 green일 때만 merge queue로 들어간다.
+- red-team report는 PR comment와 로컬 `runs/scheduler/*-redteam-report.md`에 남는다.
+- R2 draft PR은 red-team review를 받을 수 있지만 auto-merge하지 않는다.
+- R3/proposal-only 변경은 PR publish 전에 차단되어야 한다.

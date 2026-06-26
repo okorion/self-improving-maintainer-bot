@@ -7,7 +7,10 @@ param(
   [string]$ProfilesDir = "profiles\overtura",
   [string[]]$Repository = @(),
   [string]$DefaultBranch = "",
-  [string]$RequiredStatusCheck = "check",
+  [Alias("RequiredStatusCheck")]
+  [string[]]$RequiredStatusChecks = @("check", "codex-redteam"),
+  [ValidateSet("redteam-status", "github-review")]
+  [string]$ReviewMode = "redteam-status",
   [string]$RulesetName = "central-maintainer-bot-main-protection",
   [switch]$IncludeMergeQueue,
   [switch]$DryRun
@@ -128,14 +131,18 @@ function New-BranchProtectionBody {
   return @{
     required_status_checks = @{
       strict = $true
-      contexts = @($RequiredStatusCheck)
+      contexts = @($RequiredStatusChecks)
     }
     enforce_admins = $true
-    required_pull_request_reviews = @{
+    required_pull_request_reviews = if ($ReviewMode -eq "github-review") {
+      @{
       dismiss_stale_reviews = $true
       require_code_owner_reviews = $true
       required_approving_review_count = 1
       require_last_push_approval = $true
+    }
+    } else {
+      $null
     }
     restrictions = $null
     required_linear_history = $true
@@ -156,13 +163,24 @@ function New-RulesetBody {
     @{ type = "required_linear_history" },
     @{
       type = "pull_request"
-      parameters = @{
+      parameters = if ($ReviewMode -eq "github-review") {
+        @{
         dismiss_stale_reviews_on_push = $true
         require_code_owner_review = $true
         require_last_push_approval = $true
         required_approving_review_count = 1
         required_review_thread_resolution = $true
         allowed_merge_methods = @("squash")
+      }
+      } else {
+        @{
+          dismiss_stale_reviews_on_push = $false
+          require_code_owner_review = $false
+          require_last_push_approval = $false
+          required_approving_review_count = 0
+          required_review_thread_resolution = $true
+          allowed_merge_methods = @("squash")
+        }
       }
     },
     @{
@@ -171,8 +189,10 @@ function New-RulesetBody {
         strict_required_status_checks_policy = $true
         do_not_enforce_on_create = $false
         required_status_checks = @(
-          @{
-            context = $RequiredStatusCheck
+          @($RequiredStatusChecks) | ForEach-Object {
+            @{
+              context = $_
+            }
           }
         )
       }
@@ -256,11 +276,18 @@ function Test-BranchProtection {
   $contexts = @($data.required_status_checks.contexts)
   $reviews = $data.required_pull_request_reviews
   $failures = @()
-  if ($contexts -notcontains $RequiredStatusCheck) { $failures += "missing required status check '$RequiredStatusCheck'" }
-  if (-not $reviews.require_code_owner_reviews) { $failures += "code owner review is not required" }
-  if (-not $reviews.dismiss_stale_reviews) { $failures += "stale review dismissal is not enabled" }
-  if (-not $reviews.require_last_push_approval) { $failures += "last push approval is not required" }
-  if ($reviews.required_approving_review_count -lt 1) { $failures += "required approving review count is below 1" }
+  foreach ($requiredStatusCheck in @($RequiredStatusChecks)) {
+    if ($contexts -notcontains $requiredStatusCheck) { $failures += "missing required status check '$requiredStatusCheck'" }
+  }
+  if ($ReviewMode -eq "github-review") {
+    if (-not $reviews.require_code_owner_reviews) { $failures += "code owner review is not required" }
+    if (-not $reviews.dismiss_stale_reviews) { $failures += "stale review dismissal is not enabled" }
+    if (-not $reviews.require_last_push_approval) { $failures += "last push approval is not required" }
+    if ($reviews.required_approving_review_count -lt 1) { $failures += "required approving review count is below 1" }
+  }
+  elseif ($reviews -and $reviews.required_approving_review_count -gt 0) {
+    $failures += "GitHub approving review is still required in redteam-status mode"
+  }
   if (-not $data.enforce_admins.enabled) { $failures += "admin enforcement is not enabled" }
   if (-not $data.required_linear_history.enabled) { $failures += "linear history is not required" }
   if (-not $data.required_conversation_resolution.enabled) { $failures += "conversation resolution is not required" }
@@ -291,6 +318,22 @@ function Test-Ruleset {
   foreach ($requiredRule in @("deletion", "non_fast_forward", "required_linear_history", "pull_request", "required_status_checks")) {
     if ($ruleTypes -notcontains $requiredRule) {
       throw "ruleset '$RulesetName' is missing rule '$requiredRule'"
+    }
+  }
+  $statusRule = @($data.rules | Where-Object { $_.type -eq "required_status_checks" } | Select-Object -First 1)
+  $rulesetContexts = @($statusRule.parameters.required_status_checks | ForEach-Object { $_.context })
+  foreach ($requiredStatusCheck in @($RequiredStatusChecks)) {
+    if ($rulesetContexts -notcontains $requiredStatusCheck) {
+      throw "ruleset '$RulesetName' is missing required status check '$requiredStatusCheck'"
+    }
+  }
+  $pullRequestRule = @($data.rules | Where-Object { $_.type -eq "pull_request" } | Select-Object -First 1)
+  if ($ReviewMode -eq "redteam-status" -and $pullRequestRule.Count -gt 0) {
+    if ($pullRequestRule[0].parameters.required_approving_review_count -gt 0) {
+      throw "ruleset '$RulesetName' still requires approving reviews in redteam-status mode"
+    }
+    if ($pullRequestRule[0].parameters.require_code_owner_review) {
+      throw "ruleset '$RulesetName' still requires code owner review in redteam-status mode"
     }
   }
   if ($ruleTypes -notcontains "merge_queue") {

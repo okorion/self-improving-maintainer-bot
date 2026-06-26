@@ -1,3 +1,13 @@
+## Codex Red-Team Mode
+
+별도 GitHub reviewer 계정을 쓰지 않는 자동 루프에서는 GitHub approval 대신 `codex-redteam` required status check를 사용한다.
+
+- worker: patch artifact 생성
+- publisher: branch push, PR 생성, status/comment 게시, merge queue 요청
+- Codex red-team: read-only sandbox에서 PR diff를 검토하고 PASS/FAIL report 생성
+
+이 모드는 GitHub의 독립 승인 identity를 제공하지 않는다. 대신 `check`와 `codex-redteam`을 required status check로 두고, red-team FAIL 또는 누락 시 merge를 차단한다.
+
 # Identity Separation
 
 중앙 maintainer bot은 최소 세 identity를 분리하는 운영을 목표로 한다.

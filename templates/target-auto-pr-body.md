@@ -45,6 +45,8 @@ Outside allowPaths:
 
 - patch artifact: `{{PATCH_ARTIFACT}}`
 - risk report: `{{RISK_REPORT}}`
+- red-team report: `{{REDTEAM_REPORT}}`
+- red-team status: `{{REDTEAM_STATUS_CONTEXT}}`
 - scheduler log: `{{LOG_PATH}}`
 
 ## 남은 위험

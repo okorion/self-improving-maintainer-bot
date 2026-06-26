@@ -16,6 +16,7 @@
 - `docs/IDENTITY_SEPARATION.md`: read/analyze, worker, publisher identity 분리 규칙
 - `docs/LOOP_EXPERIMENTS.md`: target repo별 루프 실험 순서
 - `docs/TARGET_REPOSITORY_PROTECTION.md`: target repo CODEOWNERS, branch protection, merge queue 기준
+- `docs/CODEX_REDTEAM_GATE.md`: 별도 reviewer 계정 없는 Codex red-team status gate 운영 방식
 
 이 프로젝트는 공개 GitHub 저장소에서 바로 시작할 수 있는 **자가 개선형 Maintainer/Docs Bot** 템플릿입니다.
 

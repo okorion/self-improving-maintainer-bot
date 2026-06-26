@@ -167,3 +167,10 @@ This writes `docs/PROJECT_STATUS.md`.
 .\scripts\apply-target-protection.ps1 -Mode verify -IncludeMergeQueue
 .\scripts\apply-target-protection.ps1 -Mode apply-and-verify -IncludeMergeQueue
 ```
+
+## Codex red-team gate
+
+```powershell
+.\scripts\auto-improve-target-once.ps1 -Profile no-js-visual-lab -AutoMerge
+.\scripts\auto-improve-target-once.ps1 -Profile no-js-visual-lab -AutoMerge -AllowLocalPublisherAuth
+```

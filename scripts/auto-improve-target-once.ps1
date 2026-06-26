@@ -12,6 +12,8 @@ param(
   [string]$PublisherTokenEnv = "PUBLISH_GITHUB_TOKEN",
   [string]$PublisherFallbackTokenEnv = "BOT_GITHUB_TOKEN",
   [switch]$AllowLocalPublisherAuth,
+  [string]$RedteamStatusContext = "codex-redteam",
+  [switch]$SkipRedteam,
   [ValidateSet("squash", "merge", "rebase")]
   [string]$MergeMethod = "squash",
   [switch]$AutoMerge,
@@ -33,6 +35,9 @@ $LogPath = Join-Path $LogDir "$RunId.log"
 $PatchPath = Join-Path $LogDir "$RunId.patch"
 $RiskJsonPath = Join-Path $LogDir "$RunId-risk.json"
 $RiskMarkdownPath = Join-Path $LogDir "$RunId-risk.md"
+$RedteamPromptPath = Join-Path $LogDir "$RunId-redteam-prompt.md"
+$RedteamReportPath = Join-Path $LogDir "$RunId-redteam-report.md"
+$RedteamLastMessagePath = Join-Path $LogDir "$RunId-redteam-last-message.md"
 $CommitTemplate = Join-Path $BotRoot "templates\target-auto-commit-message.md"
 $PrTemplate = Join-Path $BotRoot "templates\target-auto-pr-body.md"
 
@@ -168,6 +173,11 @@ function Invoke-GitPush {
   }
 }
 
+function Invoke-GhNative {
+  param([string[]]$Arguments)
+  Invoke-NativeCommand -FilePath "gh" -Arguments $Arguments -WorkingDirectory $BotRoot
+}
+
 function Get-PublisherToken {
   $token = [Environment]::GetEnvironmentVariable($PublisherTokenEnv, "Process")
   if (-not $token) {
@@ -212,6 +222,202 @@ function Invoke-WithPublisherEnvCleared {
     foreach ($name in $names) {
       [Environment]::SetEnvironmentVariable($name, $saved[$name], "Process")
     }
+  }
+}
+
+function Set-CommitStatus {
+  param(
+    [string]$Repo,
+    [string]$Sha,
+    [ValidateSet("error", "failure", "pending", "success")]
+    [string]$State,
+    [string]$Context,
+    [string]$Description
+  )
+  Invoke-GhNative -Arguments @(
+    "api", "-X", "POST", "repos/$Repo/statuses/$Sha",
+    "-f", "state=$State",
+    "-f", "context=$Context",
+    "-f", "description=$Description"
+  )
+}
+
+function Get-CodexExecutable {
+  $configured = [Environment]::GetEnvironmentVariable("CODEX_CLI", "Process")
+  if (-not $configured) {
+    $configured = [Environment]::GetEnvironmentVariable("CODEX_CLI", "User")
+  }
+  if ($configured) {
+    return $configured
+  }
+  $command = Get-Command codex -ErrorAction SilentlyContinue
+  if ($command) {
+    return $command.Source
+  }
+  return "codex"
+}
+
+function Get-RedteamDecision {
+  param([string]$ReportPath)
+  if (-not (Test-Path -LiteralPath $ReportPath -PathType Leaf)) {
+    return "FAIL"
+  }
+  $matches = Select-String -LiteralPath $ReportPath -Pattern "REDTEAM_DECISION:\s*(PASS|FAIL)" -AllMatches
+  if (-not $matches) {
+    return "FAIL"
+  }
+  $last = @($matches)[-1]
+  $value = $last.Matches[$last.Matches.Count - 1].Groups[1].Value
+  if ($value -eq "PASS") {
+    return "PASS"
+  }
+  return "FAIL"
+}
+
+function Invoke-CodexRedteamReview {
+  param(
+    [string]$TargetRoot,
+    [string]$Repo,
+    [string]$PrNumber,
+    [string]$CommitSha,
+    [object]$Risk,
+    [string]$DiffStat,
+    [string]$DiffNumstat,
+    [string[]]$ChangedFiles
+  )
+
+  $changedText = ($ChangedFiles | ForEach-Object { "- $_" }) -join [Environment]::NewLine
+  $deniedText = if ($Risk.denied_files.Count -gt 0) { ($Risk.denied_files | ForEach-Object { "- $_" }) -join [Environment]::NewLine } else { "- none" }
+  $outsideText = if ($Risk.disallowed_files.Count -gt 0) { ($Risk.disallowed_files | ForEach-Object { "- $_" }) -join [Environment]::NewLine } else { "- none" }
+  $prompt = @"
+# Codex Red-Team Review
+
+You are the red-team reviewer for an automated self-improvement pull request.
+Run in read-only mode. Do not edit files, create commits, push, merge, or print secrets.
+Write the review in Korean.
+
+## Target
+
+- repository: $Repo
+- pull request: #$PrNumber
+- commit: $CommitSha
+- max risk: $($Risk.max_risk)
+- publish mode: $($Risk.publish_mode)
+- changed files: $($Risk.changed_file_count)
+- changed lines: $($Risk.changed_line_count)
+
+## Changed Files
+
+$changedText
+
+## Denied Files
+
+$deniedText
+
+## Outside allowPaths
+
+$outsideText
+
+## Diff Stat
+
+````text
+$DiffStat
+````
+
+## Diff Numstat
+
+````text
+$DiffNumstat
+````
+
+## Review Checklist
+
+Check for:
+
+1. R3-sensitive edits that escaped policy.
+2. secret, credential, token, auth, workflow, infra, or migration risk.
+3. dependency/build/script changes that should not auto-merge as R1.
+4. accidental broad rewrites or unrelated files.
+5. broken Korean documentation, obvious UI copy regressions, or invalid project instructions.
+6. mismatch between the PR body, risk report, and actual diff.
+
+Decision rules:
+
+- PASS only when the diff is safe to merge automatically under the current publish mode.
+- FAIL if you are unsure, if a protected path is present, if required evidence is missing, or if the change needs human judgment.
+- R2 draft PRs may pass review, but they must not auto-merge.
+- R3/proposal-only changes must fail if they reach this review.
+
+Return a concise Markdown report with sections:
+
+- 결론
+- 주요 확인 사항
+- 위험/차단 사유
+- 권장 후속 조치
+
+The final line must be exactly one of:
+
+REDTEAM_DECISION: PASS
+REDTEAM_DECISION: FAIL
+"@
+  [System.IO.File]::WriteAllText($RedteamPromptPath, $prompt, [System.Text.UTF8Encoding]::new($false))
+
+  $codex = Get-CodexExecutable
+  Write-Log "RUN [$TargetRoot] codex red-team review"
+  Push-Location $TargetRoot
+  try {
+    $inputText = Get-Content -LiteralPath $RedteamPromptPath -Raw -Encoding utf8
+    $inputText | & $codex exec --cd $TargetRoot --sandbox read-only --output-last-message $RedteamLastMessagePath - *>> $LogPath
+    if ($LASTEXITCODE -ne 0) {
+      "Codex red-team review failed with exit code ${LASTEXITCODE}." | Set-Content -LiteralPath $RedteamReportPath -Encoding utf8
+      return "FAIL"
+    }
+  }
+  finally {
+    Pop-Location
+  }
+
+  if (Test-Path -LiteralPath $RedteamLastMessagePath -PathType Leaf) {
+    Copy-Item -LiteralPath $RedteamLastMessagePath -Destination $RedteamReportPath -Force
+  }
+  else {
+    "Codex red-team review did not produce a last-message report." | Set-Content -LiteralPath $RedteamReportPath -Encoding utf8
+  }
+  return Get-RedteamDecision -ReportPath $RedteamReportPath
+}
+
+function Add-RedteamPrComment {
+  param(
+    [string]$Repo,
+    [string]$PrNumber,
+    [string]$Decision
+  )
+  $report = if (Test-Path -LiteralPath $RedteamReportPath -PathType Leaf) {
+    Get-Content -LiteralPath $RedteamReportPath -Raw -Encoding utf8
+  }
+  else {
+    "No red-team report was generated."
+  }
+  if ($report.Length -gt 6000) {
+    $report = $report.Substring(0, 6000) + "`n`n...(truncated)"
+  }
+
+  $body = @"
+## Codex Red-Team Review
+
+- decision: `$Decision`
+- status context: `$RedteamStatusContext`
+- local report: `$RedteamReportPath`
+
+$report
+"@
+  $bodyFile = New-TemporaryFile
+  try {
+    [System.IO.File]::WriteAllText($bodyFile, $body, [System.Text.UTF8Encoding]::new($false))
+    Invoke-GhNative -Arguments @("pr", "comment", $PrNumber, "--repo", $Repo, "--body-file", $bodyFile)
+  }
+  finally {
+    Remove-Item -LiteralPath $bodyFile -Force -ErrorAction SilentlyContinue
   }
 }
 
@@ -513,6 +719,8 @@ if ($DryRun) {
   Write-Log "Auto merge: $ResolvedAutoMerge"
   Write-Log "Phase: $Phase"
   Write-Log "Allow local publisher auth: $($AllowLocalPublisherAuth.IsPresent)"
+  Write-Log "Red-team status context: $RedteamStatusContext"
+  Write-Log "Skip red-team: $($SkipRedteam.IsPresent)"
   exit 0
 }
 
@@ -592,6 +800,10 @@ try {
 
   $PublisherToken = Set-PublisherIdentity
   Invoke-GitPush -BranchName $branchName -WorkingDirectory $TargetRoot -Token $PublisherToken
+  $headSha = Get-GitOutput -Arguments @("rev-parse", "HEAD") -WorkingDirectory $TargetRoot
+  if (-not $SkipRedteam) {
+    Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "pending" -Context $RedteamStatusContext -Description "Codex red-team review is running."
+  }
 
   $changedList = ($changed | ForEach-Object { "- ``$_``" }) -join [Environment]::NewLine
   $verifyList = ($TargetVerifyCommands + @(
@@ -615,6 +827,8 @@ try {
     DIFF_NUMSTAT = if ($DiffNumstat) { $DiffNumstat } else { "(empty)" }
     PATCH_ARTIFACT = $PatchPath
     RISK_REPORT = $RiskMarkdownPath
+    REDTEAM_REPORT = $RedteamReportPath
+    REDTEAM_STATUS_CONTEXT = $RedteamStatusContext
     LOG_PATH = $LogPath
     CHANGED_FILES = $changedList
     VERIFY_COMMANDS = $verifyList
@@ -635,11 +849,32 @@ try {
     Remove-Item -LiteralPath $prBodyFile -Force -ErrorAction SilentlyContinue
   }
 
-  if ($ResolvedAutoMerge -and $Risk.publish_mode -eq "pull_request") {
-    $prNumber = gh pr view $prUrl --repo $TargetRepo --json number --jq ".number"
-    if ($LASTEXITCODE -ne 0 -or -not $prNumber) {
-      throw "Failed to resolve PR number."
+  $prNumber = gh pr view $prUrl --repo $TargetRepo --json number --jq ".number"
+  if ($LASTEXITCODE -ne 0 -or -not $prNumber) {
+    throw "Failed to resolve PR number."
+  }
+
+  if (-not $SkipRedteam) {
+    $redteamDecision = Invoke-CodexRedteamReview `
+      -TargetRoot $TargetRoot `
+      -Repo $TargetRepo `
+      -PrNumber $prNumber `
+      -CommitSha $headSha `
+      -Risk $Risk `
+      -DiffStat $DiffStat `
+      -DiffNumstat $DiffNumstat `
+      -ChangedFiles $changed
+    Add-RedteamPrComment -Repo $TargetRepo -PrNumber $prNumber -Decision $redteamDecision
+    if ($redteamDecision -eq "PASS") {
+      Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "success" -Context $RedteamStatusContext -Description "Codex red-team review passed."
     }
+    else {
+      Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "failure" -Context $RedteamStatusContext -Description "Codex red-team review failed."
+      throw "Codex red-team review failed. See $RedteamReportPath"
+    }
+  }
+
+  if ($ResolvedAutoMerge -and $Risk.publish_mode -eq "pull_request") {
     Invoke-CommandLine -Command "gh pr checks $prNumber --repo $TargetRepo --watch" -WorkingDirectory $TargetRoot
 
     $mergeArgs = @("pr", "merge", $prNumber, "--repo", $TargetRepo, "--delete-branch")
