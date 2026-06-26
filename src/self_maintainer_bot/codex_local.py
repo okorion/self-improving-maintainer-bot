@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+from fnmatch import fnmatchcase
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -204,9 +205,13 @@ def run_codex_task(
 
     verification_returncode = None
     if returncode == 0 and not skip_verify:
+        scope = scope_from_task(task_path)
         guard_code = verify_allowed_changes(
             root=work_root,
-            allowed_paths=allowed_paths_for_scope(scope_from_task(task_path)),
+            allowed_paths=effective_allowed_paths(settings, scope),
+            denied_paths=settings.target_deny_paths,
+            max_files=settings.target_max_files,
+            max_lines=settings.target_max_lines,
             baseline_dirty=baseline_dirty,
             log_path=log_path,
         )
@@ -270,7 +275,7 @@ def render_codex_task(
     eval_report_path: Path | None,
     failed: list[EvalResult],
 ) -> str:
-    allowed_paths = allowed_paths_for_scope(scope)
+    allowed_paths = effective_allowed_paths(settings, scope)
     lines = [
         "# Local Codex Self-Improvement Task",
         "",
@@ -315,6 +320,17 @@ def render_codex_task(
             "",
         ]
     )
+
+    if settings.target_deny_paths:
+        lines.extend(["", "## Denied Scope", ""])
+        lines.extend(f"- `{path}`" for path in settings.target_deny_paths)
+        lines.extend(
+            [
+                "",
+                "Treat denied paths as proposal-only. Do not edit them in an automated PR.",
+                "",
+            ]
+        )
 
     if eval_report_path:
         lines.append(f"- Latest eval report: `{eval_report_path}`")
@@ -373,6 +389,12 @@ def allowed_paths_for_scope(scope: str) -> list[str]:
     if scope not in scopes:
         raise ValueError(f"Unsupported scope: {scope}")
     return scopes[scope]
+
+
+def effective_allowed_paths(settings: Settings, scope: str) -> list[str]:
+    if settings.target_repository and settings.target_allowed_paths:
+        return settings.target_allowed_paths
+    return allowed_paths_for_scope(scope)
 
 
 def scope_from_task(task_path: Path) -> str:
@@ -445,19 +467,21 @@ def verify_allowed_changes(
     *,
     root: Path,
     allowed_paths: list[str],
+    denied_paths: list[str],
+    max_files: int,
+    max_lines: int,
     baseline_dirty: set[str],
     log_path: Path,
 ) -> int:
     changed_after = git_changed_files(root)
     new_changes = changed_after - baseline_dirty
+    denied = sorted(path for path in new_changes if any_path_matches(path, denied_paths))
     disallowed = sorted(
         path
         for path in new_changes
-        if not any(
-            path == allowed.rstrip("/") or path.startswith(allowed.rstrip("/") + "/")
-            for allowed in allowed_paths
-        )
+        if not any_path_matches(path, allowed_paths)
     )
+    line_total = changed_line_total(root, sorted(new_changes)) if max_lines else 0
     with log_path.open("a", encoding="utf-8", newline="\n") as log:
         log.write("\n## verification: allowed change guard\n\n")
         if not new_changes:
@@ -470,5 +494,75 @@ def verify_allowed_changes(
             log.write("\nDisallowed files:\n")
             for path in disallowed:
                 log.write(f"- {path}\n")
+        if denied:
+            log.write("\nDenied files:\n")
+            for path in denied:
+                log.write(f"- {path}\n")
+        if max_files and len(new_changes) > max_files:
+            log.write(f"\nToo many changed files: {len(new_changes)} > {max_files}\n")
+        if max_lines and line_total > max_lines:
+            log.write(f"\nToo many changed lines: {line_total} > {max_lines}\n")
+        if disallowed or denied:
+            return 1
+        if max_files and len(new_changes) > max_files:
+            return 1
+        if max_lines and line_total > max_lines:
             return 1
     return 0
+
+
+def any_path_matches(path: str, patterns: list[str]) -> bool:
+    return any(path_matches(path, pattern) for pattern in patterns)
+
+
+def path_matches(path: str, pattern: str) -> bool:
+    normalized_path = path.replace("\\", "/")
+    normalized_pattern = pattern.replace("\\", "/").strip()
+    if not normalized_pattern:
+        return False
+    if normalized_pattern.endswith("/**"):
+        prefix = normalized_pattern[:-3].rstrip("/")
+        return normalized_path == prefix or normalized_path.startswith(f"{prefix}/")
+    if normalized_pattern.endswith("/"):
+        return normalized_path.startswith(normalized_pattern)
+    if any(token in normalized_pattern for token in "*?[]"):
+        return fnmatchcase(normalized_path, normalized_pattern)
+    return normalized_path == normalized_pattern or normalized_path.startswith(
+        f"{normalized_pattern.rstrip('/')}/"
+    )
+
+
+def changed_line_total(root: Path, files: list[str]) -> int:
+    if not files:
+        return 0
+    result = subprocess.run(
+        ["git", "diff", "--numstat", "--", *files],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    total = 0
+    seen: set[str] = set()
+    for line in result.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 3:
+            continue
+        added, deleted, path = parts[0], parts[1], parts[2]
+        seen.add(path.replace("\\", "/"))
+        if added.isdigit():
+            total += int(added)
+        if deleted.isdigit():
+            total += int(deleted)
+
+    for file_path in files:
+        if file_path in seen:
+            continue
+        path = root / file_path
+        if not path.is_file():
+            continue
+        try:
+            total += len(path.read_text(encoding="utf-8").splitlines())
+        except UnicodeDecodeError:
+            total += 1
+    return total

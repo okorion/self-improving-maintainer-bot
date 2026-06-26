@@ -1,0 +1,40 @@
+{
+  "repository": "overtura/native-html-ui-kit",
+  "defaultBranch": "main",
+  "worktree": "targets/overtura/native-html-ui-kit",
+  "scope": "docs",
+  "docPaths": ["README.md", "DESIGN.md", "docs", "maintainer-bot"],
+  "evalsPath": "maintainer-bot/evals/docs_qa.jsonl",
+  "verifyCommands": [
+    "pnpm install --frozen-lockfile || pnpm install",
+    "pnpm check"
+  ],
+  "allowPaths": [
+    "README.md",
+    "DESIGN.md",
+    "docs/**",
+    "maintainer-bot/**",
+    "index.html",
+    "styles.css",
+    "design-system/**"
+  ],
+  "denyPaths": [
+    ".github/workflows/**",
+    "CODEOWNERS",
+    ".env*",
+    ".npmrc",
+    "src/**",
+    "scripts/**",
+    "infra/**",
+    "terraform/**",
+    "k8s/**",
+    "migrations/**",
+    "**/*.js",
+    "**/*.ts",
+    "*.pem",
+    "*.key"
+  ],
+  "maxFiles": 10,
+  "maxLines": 250,
+  "autoMerge": false
+}

@@ -1,9 +1,10 @@
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
-  [string]$Scope = "docs",
-  [string]$TargetRepo = "overtura/action-ledger",
-  [string]$BaseBranch = "main",
+  [string]$Profile,
+  [string]$Scope = "",
+  [string]$TargetRepo = "",
+  [string]$BaseBranch = "",
   [string]$BranchPrefix = "codex/auto-improve",
   [ValidateSet("squash", "merge", "rebase")]
   [string]$MergeMethod = "squash",
@@ -17,6 +18,7 @@ $env:Path = @(
   [Environment]::GetEnvironmentVariable("Path", "Machine"),
   $env:Path
 ) -join ";"
+
 $BotRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 $RunId = Get-Date -Format "yyyyMMdd-HHmmss"
 $LogDir = Join-Path $BotRoot "runs\scheduler"
@@ -24,17 +26,72 @@ $LockDir = Join-Path $LogDir "auto-improve.lock"
 $LogPath = Join-Path $LogDir "$RunId.log"
 $CommitTemplate = Join-Path $BotRoot "templates\target-auto-commit-message.md"
 $PrTemplate = Join-Path $BotRoot "templates\target-auto-pr-body.md"
-$AllowedPathPrefixes = @("README.md", "CONTRIBUTING.md", "docs/")
-$TargetVerifyCommands = @(
-  "python -m pytest",
-  "action-ledger scan README.md docs --format markdown --max-open 30"
-)
 
 function Write-Log {
   param([string]$Message)
   $line = "$(Get-Date -Format o) $Message"
   Write-Host $line
   Add-Content -LiteralPath $LogPath -Value $line -Encoding utf8
+}
+
+function Resolve-ProfilePath {
+  param([string]$Name)
+  if (-not $Name) {
+    return $null
+  }
+
+  $candidates = @(
+    $Name,
+    "$Name.json",
+    (Join-Path "profiles" $Name),
+    (Join-Path "profiles" "$Name.json"),
+    (Join-Path "profiles\overtura" "$Name.json")
+  )
+
+  foreach ($candidate in $candidates) {
+    $path = if ([System.IO.Path]::IsPathRooted($candidate)) {
+      $candidate
+    }
+    else {
+      Join-Path $BotRoot $candidate
+    }
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+      return (Resolve-Path -LiteralPath $path).Path
+    }
+  }
+
+  throw "Target profile not found: $Name"
+}
+
+function Get-StringArray {
+  param($Value)
+  if ($null -eq $Value) {
+    return @()
+  }
+  if ($Value -is [string]) {
+    return @([string]$Value)
+  }
+  return @($Value | ForEach-Object { [string]$_ })
+}
+
+function Set-ProcessEnv {
+  param(
+    [string]$Name,
+    [string]$Value
+  )
+  if ($Value) {
+    [Environment]::SetEnvironmentVariable($Name, $Value, "Process")
+  }
+}
+
+function Set-ProcessEnvList {
+  param(
+    [string]$Name,
+    [string[]]$Values
+  )
+  if ($Values.Count -gt 0) {
+    [Environment]::SetEnvironmentVariable($Name, ($Values -join ","), "Process")
+  }
 }
 
 function Invoke-CommandLine {
@@ -116,6 +173,67 @@ function Get-ChangedFiles {
   }
 }
 
+function Test-PathPattern {
+  param(
+    [string]$Path,
+    [string]$Pattern
+  )
+  $normalizedPath = $Path.Replace("\", "/")
+  $normalizedPattern = $Pattern.Replace("\", "/").Trim()
+  if (-not $normalizedPattern) {
+    return $false
+  }
+  if ($normalizedPattern.EndsWith("/**")) {
+    $prefix = $normalizedPattern.Substring(0, $normalizedPattern.Length - 3).TrimEnd("/")
+    return $normalizedPath -eq $prefix -or $normalizedPath.StartsWith("$prefix/")
+  }
+  if ($normalizedPattern.EndsWith("/")) {
+    return $normalizedPath.StartsWith($normalizedPattern)
+  }
+  if ($normalizedPattern.Contains("*") -or $normalizedPattern.Contains("?") -or $normalizedPattern.Contains("[")) {
+    return $normalizedPath -like $normalizedPattern
+  }
+  return $normalizedPath -eq $normalizedPattern -or $normalizedPath.StartsWith("$($normalizedPattern.TrimEnd('/'))/")
+}
+
+function Test-AnyPathPattern {
+  param(
+    [string]$Path,
+    [string[]]$Patterns
+  )
+  foreach ($pattern in $Patterns) {
+    if (Test-PathPattern -Path $Path -Pattern $pattern) {
+      return $true
+    }
+  }
+  return $false
+}
+
+function Get-DiffLineCount {
+  param(
+    [string]$TargetRoot,
+    [string[]]$ChangedFiles
+  )
+  if ($ChangedFiles.Count -eq 0) {
+    return 0
+  }
+  Push-Location $TargetRoot
+  try {
+    $lines = git diff --numstat -- $ChangedFiles
+    $total = 0
+    foreach ($line in $lines) {
+      $parts = $line -split "`t"
+      if ($parts.Count -lt 3) { continue }
+      if ($parts[0] -match "^\d+$") { $total += [int]$parts[0] }
+      if ($parts[1] -match "^\d+$") { $total += [int]$parts[1] }
+    }
+    return $total
+  }
+  finally {
+    Pop-Location
+  }
+}
+
 function Assert-CleanTarget {
   param([string]$TargetRoot)
   $changed = Get-ChangedFiles -TargetRoot $TargetRoot
@@ -125,22 +243,39 @@ function Assert-CleanTarget {
 }
 
 function Assert-AllowedChanges {
-  param([string[]]$ChangedFiles)
+  param(
+    [string]$TargetRoot,
+    [string[]]$ChangedFiles,
+    [string[]]$AllowedPathPatterns,
+    [string[]]$DeniedPathPatterns,
+    [int]$MaxFiles,
+    [int]$MaxLines
+  )
   $blocked = @()
+  $denied = @()
   foreach ($path in $ChangedFiles) {
-    $ok = $false
-    foreach ($prefix in $AllowedPathPrefixes) {
-      if ($path -eq $prefix.TrimEnd("/") -or $path.StartsWith($prefix)) {
-        $ok = $true
-        break
-      }
+    if (Test-AnyPathPattern -Path $path -Patterns $DeniedPathPatterns) {
+      $denied += $path
+      continue
     }
-    if (-not $ok) {
+    if (-not (Test-AnyPathPattern -Path $path -Patterns $AllowedPathPatterns)) {
       $blocked += $path
     }
   }
+  if ($denied.Count -gt 0) {
+    throw "Refusing to publish denied files: $($denied -join ', ')"
+  }
   if ($blocked.Count -gt 0) {
-    throw "Refusing to publish files outside allowed docs scope: $($blocked -join ', ')"
+    throw "Refusing to publish files outside allowed scope: $($blocked -join ', ')"
+  }
+  if ($MaxFiles -gt 0 -and $ChangedFiles.Count -gt $MaxFiles) {
+    throw "Refusing to publish too many files: $($ChangedFiles.Count) > $MaxFiles"
+  }
+  if ($MaxLines -gt 0) {
+    $lineCount = Get-DiffLineCount -TargetRoot $TargetRoot -ChangedFiles $ChangedFiles
+    if ($lineCount -gt $MaxLines) {
+      throw "Refusing to publish too many changed lines: $lineCount > $MaxLines"
+    }
   }
 }
 
@@ -160,18 +295,92 @@ function New-TemplateFile {
 
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
+$ProfilePath = Resolve-ProfilePath -Name $Profile
+$ProfileData = $null
+if ($ProfilePath) {
+  $ProfileData = Get-Content -LiteralPath $ProfilePath -Raw -Encoding utf8 | ConvertFrom-Json
+}
+
+if (-not $TargetRepo -and $ProfileData) { $TargetRepo = [string]$ProfileData.repository }
+if (-not $TargetRepo) { $TargetRepo = $env:TARGET_REPOSITORY }
+if (-not $TargetRepo) { throw "Target repository is required. Pass -Profile or -TargetRepo." }
+
+if (-not $BaseBranch -and $ProfileData) { $BaseBranch = [string]$ProfileData.defaultBranch }
+if (-not $BaseBranch) { $BaseBranch = "main" }
+
+if (-not $Scope -and $ProfileData) { $Scope = [string]$ProfileData.scope }
+if (-not $Scope) { $Scope = "docs" }
+
+$TargetWorktree = if ($ProfileData -and $ProfileData.worktree) {
+  [string]$ProfileData.worktree
+}
+else {
+  "targets/$($TargetRepo.Replace('/', '/'))"
+}
+$TargetDocPaths = if ($ProfileData -and $ProfileData.docPaths) {
+  Get-StringArray $ProfileData.docPaths
+}
+else {
+  @("README.md", "DESIGN.md", "docs", "maintainer-bot")
+}
+$TargetEvalsPath = if ($ProfileData -and $ProfileData.evalsPath) {
+  [string]$ProfileData.evalsPath
+}
+else {
+  "maintainer-bot/evals/docs_qa.jsonl"
+}
+$AllowedPathPatterns = if ($ProfileData -and $ProfileData.allowPaths) {
+  Get-StringArray $ProfileData.allowPaths
+}
+else {
+  @("README.md", "CONTRIBUTING.md", "docs/**", "maintainer-bot/**")
+}
+$DeniedPathPatterns = if ($ProfileData -and $ProfileData.denyPaths) {
+  Get-StringArray $ProfileData.denyPaths
+}
+else {
+  @(".github/workflows/**", "CODEOWNERS", ".env*", ".npmrc", "infra/**", "terraform/**", "k8s/**", "migrations/**", "**/auth/**", "**/security/**", "*.pem", "*.key")
+}
+$TargetVerifyCommands = if ($ProfileData -and $ProfileData.verifyCommands) {
+  Get-StringArray $ProfileData.verifyCommands
+}
+else {
+  @("pnpm install --frozen-lockfile || pnpm install", "pnpm check")
+}
+$MaxFiles = if ($ProfileData -and $ProfileData.maxFiles) { [int]$ProfileData.maxFiles } else { 20 }
+$MaxLines = if ($ProfileData -and $ProfileData.maxLines) { [int]$ProfileData.maxLines } else { 500 }
+$ProfileAutoMerge = if ($ProfileData -and $null -ne $ProfileData.autoMerge) { [bool]$ProfileData.autoMerge } else { $false }
+$ResolvedAutoMerge = $AutoMerge.IsPresent -or $ProfileAutoMerge
+
+Set-ProcessEnv -Name "TARGET_REPOSITORY" -Value $TargetRepo
+Set-ProcessEnv -Name "TARGET_DEFAULT_BRANCH" -Value $BaseBranch
+Set-ProcessEnv -Name "TARGET_WORKTREE" -Value $TargetWorktree
+Set-ProcessEnv -Name "TARGET_EVALS_PATH" -Value $TargetEvalsPath
+Set-ProcessEnvList -Name "TARGET_DOC_PATHS" -Values $TargetDocPaths
+Set-ProcessEnvList -Name "TARGET_ALLOWED_PATHS" -Values $AllowedPathPatterns
+Set-ProcessEnvList -Name "TARGET_DENY_PATHS" -Values $DeniedPathPatterns
+Set-ProcessEnv -Name "TARGET_MAX_FILES" -Value ([string]$MaxFiles)
+Set-ProcessEnv -Name "TARGET_MAX_LINES" -Value ([string]$MaxLines)
+
 if ($DryRun) {
+  $profileLabel = if ($ProfilePath) { $ProfilePath } else { "(none)" }
   Write-Log "Dry run only. No Codex execution, commit, PR, or merge will run."
   Write-Log "Bot root: $BotRoot"
+  Write-Log "Profile: $profileLabel"
   Write-Log "Target repo: $TargetRepo"
   Write-Log "Scope: $Scope"
-  Write-Log "Auto merge: $AutoMerge"
+  Write-Log "Base branch: $BaseBranch"
+  Write-Log "Allowed paths: $($AllowedPathPatterns -join ', ')"
+  Write-Log "Denied paths: $($DeniedPathPatterns -join ', ')"
+  Write-Log "Max files: $MaxFiles"
+  Write-Log "Max lines: $MaxLines"
+  Write-Log "Auto merge: $ResolvedAutoMerge"
   exit 0
 }
 
 New-Item -ItemType Directory -Path $LockDir -ErrorAction Stop | Out-Null
 try {
-  Write-Log "Auto improve run started. run_id=$RunId scope=$Scope auto_merge=$AutoMerge"
+  Write-Log "Auto improve run started. run_id=$RunId profile=$Profile target=$TargetRepo scope=$Scope auto_merge=$ResolvedAutoMerge"
   Invoke-CommandLine -Command "python -m self_maintainer_bot.cli prepare-target" -WorkingDirectory $BotRoot
   $TargetRoot = Get-TargetRoot
   Assert-CleanTarget -TargetRoot $TargetRoot
@@ -184,7 +393,13 @@ try {
     Write-Log "No target changes detected. Nothing to publish."
     exit 0
   }
-  Assert-AllowedChanges -ChangedFiles $changed
+  Assert-AllowedChanges `
+    -TargetRoot $TargetRoot `
+    -ChangedFiles $changed `
+    -AllowedPathPatterns $AllowedPathPatterns `
+    -DeniedPathPatterns $DeniedPathPatterns `
+    -MaxFiles $MaxFiles `
+    -MaxLines $MaxLines
 
   foreach ($command in $TargetVerifyCommands) {
     Invoke-CommandLine -Command $command -WorkingDirectory $TargetRoot
@@ -192,7 +407,8 @@ try {
   Invoke-CommandLine -Command "python -m self_maintainer_bot.cli eval-docs --fail-under 1" -WorkingDirectory $BotRoot
   Invoke-CommandLine -Command "git diff --check" -WorkingDirectory $TargetRoot
 
-  $branchName = "$BranchPrefix-$RunId"
+  $safeTarget = $TargetRepo.Replace("/", "-")
+  $branchName = "$BranchPrefix-$safeTarget-$RunId"
   Invoke-CommandLine -Command "git switch -c $branchName" -WorkingDirectory $TargetRoot
   foreach ($path in $changed) {
     Invoke-CommandLine -Command "git add -- `"$path`"" -WorkingDirectory $TargetRoot
@@ -215,6 +431,8 @@ try {
   ) | ForEach-Object { "- ``$_``" }) -join [Environment]::NewLine
   $prBodyFile = New-TemplateFile -TemplatePath $PrTemplate -Values @{
     RUN_ID = $RunId
+    PROFILE = if ($Profile) { $Profile } else { "(none)" }
+    TARGET_REPOSITORY = $TargetRepo
     SCOPE = $Scope
     CHANGED_FILES = $changedList
     VERIFY_COMMANDS = $verifyList
@@ -231,7 +449,7 @@ try {
     Remove-Item -LiteralPath $prBodyFile -Force -ErrorAction SilentlyContinue
   }
 
-  if ($AutoMerge) {
+  if ($ResolvedAutoMerge) {
     $prNumber = gh pr view $prUrl --repo $TargetRepo --json number --jq ".number"
     if ($LASTEXITCODE -ne 0 -or -not $prNumber) {
       throw "Failed to resolve PR number."

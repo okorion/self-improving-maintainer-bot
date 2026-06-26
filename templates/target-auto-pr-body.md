@@ -5,6 +5,8 @@
 ## 주요 변경
 
 - 실행 ID: `{{RUN_ID}}`
+- profile: `{{PROFILE}}`
+- target repo: `{{TARGET_REPOSITORY}}`
 - scope: `{{SCOPE}}`
 - 변경 파일:
 {{CHANGED_FILES}}

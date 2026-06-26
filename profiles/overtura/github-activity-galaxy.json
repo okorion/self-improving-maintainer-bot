@@ -1,0 +1,38 @@
+{
+  "repository": "overtura/github-activity-galaxy",
+  "defaultBranch": "main",
+  "worktree": "targets/overtura/github-activity-galaxy",
+  "scope": "docs",
+  "docPaths": ["README.md", "DESIGN.md", "docs", "maintainer-bot"],
+  "evalsPath": "maintainer-bot/evals/docs_qa.jsonl",
+  "verifyCommands": [
+    "pnpm install --frozen-lockfile || pnpm install",
+    "pnpm check"
+  ],
+  "allowPaths": [
+    "README.md",
+    "DESIGN.md",
+    "docs/**",
+    "maintainer-bot/**",
+    "src/**"
+  ],
+  "denyPaths": [
+    ".github/workflows/**",
+    "CODEOWNERS",
+    ".env*",
+    ".npmrc",
+    "infra/**",
+    "terraform/**",
+    "k8s/**",
+    "migrations/**",
+    "**/auth/**",
+    "**/security/**",
+    "*.pem",
+    "*.key",
+    "*token*",
+    "*credential*"
+  ],
+  "maxFiles": 12,
+  "maxLines": 300,
+  "autoMerge": false
+}

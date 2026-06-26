@@ -37,6 +37,10 @@ class Settings:
     target_worktree: Path
     target_doc_paths: list[str]
     target_evals_path: Path | None
+    target_allowed_paths: list[str]
+    target_deny_paths: list[str]
+    target_max_files: int
+    target_max_lines: int
     codex_timeout_seconds: int
 
 
@@ -63,6 +67,10 @@ def load_settings() -> Settings:
         target_worktree=target_worktree,
         target_doc_paths=target_doc_paths,
         target_evals_path=Path(target_evals_path_raw) if target_evals_path_raw else None,
+        target_allowed_paths=parse_csv(os.getenv("TARGET_ALLOWED_PATHS"), default=[]),
+        target_deny_paths=parse_csv(os.getenv("TARGET_DENY_PATHS"), default=[]),
+        target_max_files=parse_int(os.getenv("TARGET_MAX_FILES"), default=0),
+        target_max_lines=parse_int(os.getenv("TARGET_MAX_LINES"), default=0),
         codex_timeout_seconds=parse_int(os.getenv("CODEX_TIMEOUT_SECONDS"), default=3600),
     )
 

@@ -37,13 +37,13 @@ prepare-target
 
 ```powershell
 cd "E:\Project Archieve\self-improving-maintainer-bot"
-.\scripts\auto-improve-target-once.ps1 -Scope docs
+.\scripts\auto-improve-target-once.ps1 -Profile living-shader-gallery -Scope docs
 ```
 
 자동 merge까지 포함하려면:
 
 ```powershell
-.\scripts\auto-improve-target-once.ps1 -Scope docs -AutoMerge
+.\scripts\auto-improve-target-once.ps1 -Profile living-shader-gallery -Scope docs -AutoMerge
 ```
 
 ## 24시간 스케줄 등록
@@ -52,13 +52,13 @@ cd "E:\Project Archieve\self-improving-maintainer-bot"
 
 ```powershell
 cd "E:\Project Archieve\self-improving-maintainer-bot"
-.\scripts\register-target-auto-improve-schedule.ps1 -AutoMerge
+.\scripts\register-target-auto-improve-schedule.ps1 -Profile living-shader-gallery -AutoMerge
 ```
 
 즉시 첫 실행도 시작하려면:
 
 ```powershell
-.\scripts\register-target-auto-improve-schedule.ps1 -AutoMerge -StartNow
+.\scripts\register-target-auto-improve-schedule.ps1 -Profile living-shader-gallery -AutoMerge -StartNow
 ```
 
 등록된 작업 확인:

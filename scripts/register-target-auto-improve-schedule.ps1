@@ -1,7 +1,8 @@
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
-  [string]$TaskName = "ActionLedgerAutoImprove24h",
+  [string]$TaskName = "TargetAutoImprove24h",
+  [string]$Profile = "",
   [datetime]$StartAt = (Get-Date).AddMinutes(10),
   [int]$IntervalHours = 1,
   [int]$DurationHours = 24,
@@ -22,6 +23,9 @@ $arguments = @(
   "-Scope", $Scope,
   "-MergeMethod", $MergeMethod
 )
+if ($Profile) {
+  $arguments += @("-Profile", $Profile)
+}
 if ($AutoMerge) {
   $arguments += "-AutoMerge"
 }
