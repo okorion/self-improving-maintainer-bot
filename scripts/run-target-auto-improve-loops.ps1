@@ -109,7 +109,14 @@ function Get-ImprovementState {
   New-Item -ItemType Directory -Force -Path $ScopeStateDir | Out-Null
   $statePath = Get-StatePath -ProfileName $ProfileName
   if (Test-Path -LiteralPath $statePath -PathType Leaf) {
-    return Get-Content -LiteralPath $statePath -Raw -Encoding utf8 | ConvertFrom-Json
+    $state = Get-Content -LiteralPath $statePath -Raw -Encoding utf8 | ConvertFrom-Json
+    if (-not ($state.PSObject.Properties.Name -contains "sequenceOffsetVersion")) {
+      $offset = Get-ProfileSequenceOffset -ProfileName $ProfileName
+      $state.nonDocsIndex = (([int]$state.nonDocsIndex + $offset) % $NonDocsSequence.Count)
+      $state | Add-Member -NotePropertyName "sequenceOffsetVersion" -NotePropertyValue 1 -Force
+      Save-ImprovementState -ProfileName $ProfileName -State $state
+    }
+    return $state
   }
   $profileData = Get-ProfileData -ProfileName $ProfileName
   $docsStreak = Get-RecentMergedDocsStreak -Repo ([string]$profileData.repository)
@@ -120,17 +127,22 @@ function Get-ImprovementState {
     docsStreak = $docsStreak
     nonDocsIndex = $offset
     lastKind = ""
+    sequenceOffsetVersion = 1
     updatedAt = ""
   }
 }
 
 function Get-ProfileSequenceOffset {
   param([string]$ProfileName)
-  $sum = 0
-  foreach ($char in $ProfileName.ToCharArray()) {
-    $sum += [int][char]$char
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($ProfileName)
+    $hash = $sha.ComputeHash($bytes)
+    return ([int]$hash[0] % $NonDocsSequence.Count)
   }
-  return ($sum % $NonDocsSequence.Count)
+  finally {
+    $sha.Dispose()
+  }
 }
 
 function Save-ImprovementState {

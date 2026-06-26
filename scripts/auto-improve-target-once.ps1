@@ -49,6 +49,9 @@ $ReviewResponseSummaryPath = Join-Path $LogDir "$RunId-review-response-summary.m
 $CommitTemplate = Join-Path $BotRoot "templates\target-auto-commit-message.md"
 $PrTemplate = Join-Path $BotRoot "templates\target-auto-pr-body.md"
 $ReviewResponseCommitTemplate = Join-Path $BotRoot "templates\review-response-commit-message.md"
+$RedteamReviewCommentTemplate = Join-Path $BotRoot "templates\redteam-review-comment.md"
+$ReviewResponseCommentTemplate = Join-Path $BotRoot "templates\review-response-comment.md"
+$RedteamCloseCommentTemplate = Join-Path $BotRoot "templates\redteam-close-comment.md"
 $RedteamPassHandlingTemplate = Join-Path $BotRoot "templates\redteam-pass-handling-comment.md"
 $RedteamResponseHandlingTemplate = Join-Path $BotRoot "templates\redteam-response-handling-comment.md"
 
@@ -67,6 +70,43 @@ function Get-MergeBodyText {
     0xAC1C, 0xC120, 0x20, 0xACB0, 0xACFC, 0xB97C, 0x20,
     0xBCD1, 0xD569, 0xD569, 0xB2C8, 0xB2E4, 0x002E
   )
+}
+
+function Get-ReviewWord {
+  return New-UnicodeString @(0xB9AC, 0xBDF0)
+}
+
+function Get-RedteamPendingDescription {
+  param([int]$Attempt)
+  return "Codex red-team $(Get-ReviewWord) $Attempt $(New-UnicodeString @(0xBC88, 0xC9F8, 0x0020, 0xC2DC, 0xB3C4, 0x0020, 0xC9C4, 0xD589, 0x0020, 0xC911))"
+}
+
+function Get-RedteamPassedDescription {
+  return "Codex red-team $(Get-ReviewWord) $(New-UnicodeString @(0xD1B5, 0xACFC))"
+}
+
+function Get-RedteamFailedDescription {
+  return "Codex red-team $(Get-ReviewWord) $(New-UnicodeString @(0xC2E4, 0xD328))"
+}
+
+function Get-ReviewFailedReason {
+  param([int]$Attempt)
+  return "Codex red-team $(Get-ReviewWord) $Attempt $(New-UnicodeString @(0xD68C, 0x0020, 0xC2DC, 0xB3C4, 0x0020, 0xD6C4, 0xC5D0, 0xB3C4, 0x0020, 0xC2E4, 0xD328, 0xD588, 0xC2B5, 0xB2C8, 0xB2E4, 0x002E))"
+}
+
+function Get-PublishModeReviewDisabledReason {
+  param([string]$PublishMode)
+  return "publish_mode=$PublishMode$(New-UnicodeString @(0x0020, 0xC0C1, 0xD0DC, 0xC5D0, 0xC11C, 0xB294, 0x0020, 0xC790, 0xB3D9, 0x0020, 0xB9AC, 0xBDF0, 0x0020, 0xB300, 0xC751, 0xC744, 0x0020, 0xC9C4, 0xD589, 0xD558, 0xC9C0, 0x0020, 0xC54A, 0xC2B5, 0xB2C8, 0xB2E4, 0x002E))"
+}
+
+function Get-NoReviewResponseChangesReason {
+  param([int]$Attempt)
+  return "$(New-UnicodeString @(0xB9AC, 0xBDF0, 0x0020, 0xB300, 0xC751, 0x0020))$Attempt$(New-UnicodeString @(0x0020, 0xBC88, 0xC9F8, 0x0020, 0xC2DC, 0xB3C4, 0xC5D0, 0xC11C, 0x0020, 0xD0C0, 0xAE43, 0x0020, 0xBCC0, 0xACBD, 0xC774, 0x0020, 0xC0DD, 0xC131, 0xB418, 0xC9C0, 0x0020, 0xC54A, 0xC558, 0xC2B5, 0xB2C8, 0xB2E4, 0x002E))"
+}
+
+function Get-RiskBudgetExceededReason {
+  param([string]$PublishMode)
+  return "$(New-UnicodeString @(0xB9AC, 0xBDF0, 0x0020, 0xB300, 0xC751, 0x0020, 0xACB0, 0xACFC, 0xAC00, 0x0020, 0xC790, 0xB3D9, 0x0020, 0xBCD1, 0xD569, 0x0020, 0xC704, 0xD5D8, 0x0020, 0xD55C, 0xB3C4, 0xB97C, 0x0020, 0xCD08, 0xACFC, 0xD588, 0xC2B5, 0xB2C8, 0xB2E4, 0x002E, 0x0020, 0x0070, 0x0075, 0x0062, 0x006C, 0x0069, 0x0073, 0x0068, 0x005F, 0x006D, 0x006F, 0x0064, 0x0065, 0x003D))$PublishMode"
 }
 
 function Write-Log {
@@ -538,28 +578,23 @@ function Add-RedteamPrComment {
     $report = $report.Substring(0, 6000) + "`n`n...(truncated)"
   }
 
-  $body = @"
-## Codex Red-Team 리뷰
-
-- 판정: ``$Decision``
-- 시도: ``$Attempt``
-- 상태 컨텍스트: ``$RedteamStatusContext``
-
-$report
-"@
-  $bodyFile = New-TemporaryFile
+  $bodyFile = New-TemplateFile -TemplatePath $RedteamReviewCommentTemplate -Values @{
+    DECISION = $Decision
+    ATTEMPT = $Attempt
+    REDTEAM_STATUS_CONTEXT = $RedteamStatusContext
+    REPORT = $report
+  }
   try {
-    [System.IO.File]::WriteAllText($bodyFile.FullName, $body, [System.Text.UTF8Encoding]::new($false))
     $commentId = Invoke-GhOutput -Arguments @(
       "api", "-X", "POST", "repos/$Repo/issues/$PrNumber/comments",
       "-H", "Accept: application/vnd.github+json",
-      "-F", "body=@$($bodyFile.FullName)",
+      "-F", "body=@$bodyFile",
       "--jq", ".id"
     )
     return ($commentId.Trim())
   }
   finally {
-    Remove-Item -LiteralPath $bodyFile.FullName -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $bodyFile -Force -ErrorAction SilentlyContinue
   }
 }
 
@@ -752,20 +787,12 @@ function Add-ReviewResponsePrComment {
     "- none"
   }
 
-  $body = @"
-## Codex 리뷰 대응
-
-- 시도: ``$Attempt``
-
-변경 파일:
-
-$changedText
-
-$summary
-"@
-  $bodyFile = New-TemporaryFile
+  $bodyFile = New-TemplateFile -TemplatePath $ReviewResponseCommentTemplate -Values @{
+    ATTEMPT = $Attempt
+    CHANGED_FILES = $changedText
+    SUMMARY = $summary
+  }
   try {
-    [System.IO.File]::WriteAllText($bodyFile, $body, [System.Text.UTF8Encoding]::new($false))
     Invoke-GhNative -Arguments @("pr", "comment", $PrNumber, "--repo", $Repo, "--body-file", $bodyFile)
   }
   finally {
@@ -896,17 +923,20 @@ function Close-ReviewFailedPullRequest {
     throw $Reason
   }
 
-  $comment = @"
-Codex red-team 리뷰 대응 한도에 도달해 이 PR을 닫고 새 개선 후보를 찾습니다.
-
-사유: $Reason
-다음 동작: 같은 반복 회차에서 다른 개선 후보를 생성해 새 PR을 엽니다.
-"@
+  $commentFile = New-TemplateFile -TemplatePath $RedteamCloseCommentTemplate -Values @{
+    REASON = $Reason
+  }
+  $comment = Get-Content -LiteralPath $commentFile -Raw -Encoding utf8
   Write-Log "Closing PR #$PrNumber after review failure: $Reason"
-  Invoke-GhNative -Arguments @("pr", "close", $PrNumber, "--repo", $Repo, "--comment", $comment, "--delete-branch")
-  Switch-TargetToBaseForReplacement -TargetRoot $TargetRoot -BaseBranch $BaseBranch -BranchName $BranchName
-  Write-Log "Closed PR #$PrNumber. Exiting with review failure code $ReviewFailureExitCode so the batch runner can open a replacement PR."
-  exit $ReviewFailureExitCode
+  try {
+    Invoke-GhNative -Arguments @("pr", "close", $PrNumber, "--repo", $Repo, "--comment", $comment, "--delete-branch")
+    Switch-TargetToBaseForReplacement -TargetRoot $TargetRoot -BaseBranch $BaseBranch -BranchName $BranchName
+    Write-Log "Closed PR #$PrNumber. Exiting with review failure code $ReviewFailureExitCode so the batch runner can open a replacement PR."
+    exit $ReviewFailureExitCode
+  }
+  finally {
+    Remove-Item -LiteralPath $commentFile -Force -ErrorAction SilentlyContinue
+  }
 }
 
 function Get-TargetRoot {
@@ -1416,7 +1446,7 @@ try {
       $prChangedFiles = Get-PullRequestChangedFiles -TargetRoot $TargetRoot -BaseBranch $BaseBranch
       $prDiffStat = Get-PullRequestDiffStat -TargetRoot $TargetRoot -BaseBranch $BaseBranch
       $prDiffNumstat = Get-PullRequestDiffNumstat -TargetRoot $TargetRoot -BaseBranch $BaseBranch
-      Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "pending" -Context $RedteamStatusContext -Description "Codex red-team 리뷰 $reviewAttempt 번째 시도 진행 중"
+      Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "pending" -Context $RedteamStatusContext -Description (Get-RedteamPendingDescription -Attempt $reviewAttempt)
 
       $redteamResult = Invoke-CodexRedteamReview `
         -TargetRoot $TargetRoot `
@@ -1430,13 +1460,13 @@ try {
         -Attempt $reviewAttempt
       $redteamCommentId = Add-RedteamPrComment -Repo $TargetRepo -PrNumber $prNumber -Decision $redteamResult.Decision -ReportPath $redteamResult.ReportPath -Attempt $reviewAttempt
       if ($redteamResult.Decision -eq "PASS") {
-        Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "success" -Context $RedteamStatusContext -Description "Codex red-team 리뷰 통과"
+        Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "success" -Context $RedteamStatusContext -Description (Get-RedteamPassedDescription)
         Add-IssueCommentReaction -Repo $TargetRepo -CommentId $redteamCommentId -Content "+1"
         Add-RedteamHandlingComment -Repo $TargetRepo -PrNumber $prNumber -RedteamCommentId $redteamCommentId -Outcome "pass" -Attempt $reviewAttempt
         break
       }
 
-      Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "failure" -Context $RedteamStatusContext -Description "Codex red-team 리뷰 실패"
+      Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "failure" -Context $RedteamStatusContext -Description (Get-RedteamFailedDescription)
       Add-IssueCommentReaction -Repo $TargetRepo -CommentId $redteamCommentId -Content "eyes"
       if ($reviewAttempt -ge $maxReviewAttempts) {
         Close-ReviewFailedPullRequest `
@@ -1445,7 +1475,7 @@ try {
           -BranchName $branchName `
           -TargetRoot $TargetRoot `
           -BaseBranch $BaseBranch `
-          -Reason "Codex red-team 리뷰가 $reviewAttempt 회 시도 후에도 실패했습니다." `
+          -Reason (Get-ReviewFailedReason -Attempt $reviewAttempt) `
           -ReportPath $redteamResult.ReportPath
       }
       if ($Risk.publish_mode -ne "pull_request") {
@@ -1455,7 +1485,7 @@ try {
           -BranchName $branchName `
           -TargetRoot $TargetRoot `
           -BaseBranch $BaseBranch `
-          -Reason "publish_mode=$($Risk.publish_mode) 상태에서는 자동 리뷰 대응을 진행하지 않습니다." `
+          -Reason (Get-PublishModeReviewDisabledReason -PublishMode $Risk.publish_mode) `
           -ReportPath $redteamResult.ReportPath
       }
 
@@ -1480,7 +1510,7 @@ try {
           -BranchName $branchName `
           -TargetRoot $TargetRoot `
           -BaseBranch $BaseBranch `
-          -Reason "리뷰 대응 $reviewAttempt 번째 시도에서 타깃 변경이 생성되지 않았습니다." `
+          -Reason (Get-NoReviewResponseChangesReason -Attempt $reviewAttempt) `
           -ReportPath $responseSummaryPath
       }
       $responsePatchPath = Get-AttemptArtifactPath -Name "review-response" -Attempt $reviewAttempt -Extension "patch"
@@ -1507,7 +1537,7 @@ try {
           -BranchName $branchName `
           -TargetRoot $TargetRoot `
           -BaseBranch $BaseBranch `
-          -Reason "리뷰 대응 결과가 자동 병합 위험 한도를 초과했습니다. publish_mode=$($Risk.publish_mode)" `
+          -Reason (Get-RiskBudgetExceededReason -PublishMode $Risk.publish_mode) `
           -ReportPath $RiskMarkdownPath
       }
 
