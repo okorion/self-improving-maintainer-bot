@@ -173,4 +173,5 @@ This writes `docs/PROJECT_STATUS.md`.
 ```powershell
 .\scripts\auto-improve-target-once.ps1 -Profile no-js-visual-lab -AutoMerge
 .\scripts\auto-improve-target-once.ps1 -Profile no-js-visual-lab -AutoMerge -AllowLocalPublisherAuth
+.\scripts\run-target-auto-improve-loops.ps1 -Iterations 3 -AutoMerge -AllowLocalPublisherAuth
 ```

@@ -14,6 +14,9 @@ param(
   [switch]$AllowLocalPublisherAuth,
   [string]$RedteamStatusContext = "codex-redteam",
   [switch]$SkipRedteam,
+  [int]$MaxReviewResponses = 2,
+  [int]$MergeWaitTimeoutSeconds = 900,
+  [int]$MergePollSeconds = 15,
   [ValidateSet("squash", "merge", "rebase")]
   [string]$MergeMethod = "squash",
   [switch]$AutoMerge,
@@ -38,6 +41,7 @@ $RiskMarkdownPath = Join-Path $LogDir "$RunId-risk.md"
 $RedteamPromptPath = Join-Path $LogDir "$RunId-redteam-prompt.md"
 $RedteamReportPath = Join-Path $LogDir "$RunId-redteam-report.md"
 $RedteamLastMessagePath = Join-Path $LogDir "$RunId-redteam-last-message.md"
+$ReviewResponseSummaryPath = Join-Path $LogDir "$RunId-review-response-summary.md"
 $CommitTemplate = Join-Path $BotRoot "templates\target-auto-commit-message.md"
 $PrTemplate = Join-Path $BotRoot "templates\target-auto-pr-body.md"
 
@@ -178,6 +182,28 @@ function Invoke-GhNative {
   Invoke-NativeCommand -FilePath "gh" -Arguments $Arguments -WorkingDirectory $BotRoot
 }
 
+function Invoke-GhOutput {
+  param(
+    [string[]]$Arguments,
+    [string]$WorkingDirectory = $BotRoot
+  )
+  $renderedArgs = ($Arguments | ForEach-Object {
+    if ($_ -match "\s") { "`"$_`"" } else { $_ }
+  }) -join " "
+  Write-Log "RUN [$WorkingDirectory] gh $renderedArgs"
+  Push-Location $WorkingDirectory
+  try {
+    $output = gh @Arguments 2>> $LogPath
+    if ($LASTEXITCODE -ne 0) {
+      throw "gh failed with exit code ${LASTEXITCODE}: $renderedArgs"
+    }
+    return ($output -join [Environment]::NewLine)
+  }
+  finally {
+    Pop-Location
+  }
+}
+
 function Get-PublisherToken {
   $token = [Environment]::GetEnvironmentVariable($PublisherTokenEnv, "Process")
   if (-not $token) {
@@ -257,6 +283,15 @@ function Get-CodexExecutable {
   return "codex"
 }
 
+function Get-AttemptArtifactPath {
+  param(
+    [string]$Name,
+    [int]$Attempt,
+    [string]$Extension = "md"
+  )
+  return (Join-Path $LogDir "$RunId-$Name-attempt-$Attempt.$Extension")
+}
+
 function Get-RedteamDecision {
   param([string]$ReportPath)
   if (-not (Test-Path -LiteralPath $ReportPath -PathType Leaf)) {
@@ -283,9 +318,13 @@ function Invoke-CodexRedteamReview {
     [object]$Risk,
     [string]$DiffStat,
     [string]$DiffNumstat,
-    [string[]]$ChangedFiles
+    [string[]]$ChangedFiles,
+    [int]$Attempt
   )
 
+  $attemptPromptPath = Get-AttemptArtifactPath -Name "redteam-prompt" -Attempt $Attempt
+  $attemptReportPath = Get-AttemptArtifactPath -Name "redteam-report" -Attempt $Attempt
+  $attemptLastMessagePath = Get-AttemptArtifactPath -Name "redteam-last-message" -Attempt $Attempt
   $changedText = ($ChangedFiles | ForEach-Object { "- $_" }) -join [Environment]::NewLine
   $deniedText = if ($Risk.denied_files.Count -gt 0) { ($Risk.denied_files | ForEach-Object { "- $_" }) -join [Environment]::NewLine } else { "- none" }
   $outsideText = if ($Risk.disallowed_files.Count -gt 0) { ($Risk.disallowed_files | ForEach-Object { "- $_" }) -join [Environment]::NewLine } else { "- none" }
@@ -301,6 +340,7 @@ Write the review in Korean.
 - repository: $Repo
 - pull request: #$PrNumber
 - commit: $CommitSha
+- attempt: $Attempt
 - max risk: $($Risk.max_risk)
 - publish mode: $($Risk.publish_mode)
 - changed files: $($Risk.changed_file_count)
@@ -360,44 +400,55 @@ The final line must be exactly one of:
 REDTEAM_DECISION: PASS
 REDTEAM_DECISION: FAIL
 "@
-  [System.IO.File]::WriteAllText($RedteamPromptPath, $prompt, [System.Text.UTF8Encoding]::new($false))
+  [System.IO.File]::WriteAllText($attemptPromptPath, $prompt, [System.Text.UTF8Encoding]::new($false))
+  Copy-Item -LiteralPath $attemptPromptPath -Destination $RedteamPromptPath -Force
 
   $codex = Get-CodexExecutable
-  Write-Log "RUN [$TargetRoot] codex red-team review"
+  Write-Log "RUN [$TargetRoot] codex red-team review attempt=$Attempt"
   Push-Location $TargetRoot
   try {
-    $inputText = Get-Content -LiteralPath $RedteamPromptPath -Raw -Encoding utf8
+    $inputText = Get-Content -LiteralPath $attemptPromptPath -Raw -Encoding utf8
     $script:CodexRedteamExitCode = 0
     Invoke-WithPublisherEnvCleared {
-      $inputText | & $codex exec --cd $TargetRoot --sandbox read-only --output-last-message $RedteamLastMessagePath - *>> $LogPath
+      $inputText | & $codex exec --cd $TargetRoot --sandbox read-only --output-last-message $attemptLastMessagePath - *>> $LogPath
       $script:CodexRedteamExitCode = $LASTEXITCODE
     }
     if ($script:CodexRedteamExitCode -ne 0) {
-      "Codex red-team review failed with exit code $($script:CodexRedteamExitCode)." | Set-Content -LiteralPath $RedteamReportPath -Encoding utf8
-      return "FAIL"
+      "Codex red-team review failed with exit code $($script:CodexRedteamExitCode)." | Set-Content -LiteralPath $attemptReportPath -Encoding utf8
+      Copy-Item -LiteralPath $attemptReportPath -Destination $RedteamReportPath -Force
+      return [pscustomobject]@{
+        Decision = "FAIL"
+        ReportPath = $attemptReportPath
+      }
     }
   }
   finally {
     Pop-Location
   }
 
-  if (Test-Path -LiteralPath $RedteamLastMessagePath -PathType Leaf) {
-    Copy-Item -LiteralPath $RedteamLastMessagePath -Destination $RedteamReportPath -Force
+  if (Test-Path -LiteralPath $attemptLastMessagePath -PathType Leaf) {
+    Copy-Item -LiteralPath $attemptLastMessagePath -Destination $attemptReportPath -Force
   }
   else {
-    "Codex red-team review did not produce a last-message report." | Set-Content -LiteralPath $RedteamReportPath -Encoding utf8
+    "Codex red-team review did not produce a last-message report." | Set-Content -LiteralPath $attemptReportPath -Encoding utf8
   }
-  return Get-RedteamDecision -ReportPath $RedteamReportPath
+  Copy-Item -LiteralPath $attemptReportPath -Destination $RedteamReportPath -Force
+  return [pscustomobject]@{
+    Decision = Get-RedteamDecision -ReportPath $attemptReportPath
+    ReportPath = $attemptReportPath
+  }
 }
 
 function Add-RedteamPrComment {
   param(
     [string]$Repo,
     [string]$PrNumber,
-    [string]$Decision
+    [string]$Decision,
+    [string]$ReportPath,
+    [int]$Attempt
   )
-  $report = if (Test-Path -LiteralPath $RedteamReportPath -PathType Leaf) {
-    Get-Content -LiteralPath $RedteamReportPath -Raw -Encoding utf8
+  $report = if (Test-Path -LiteralPath $ReportPath -PathType Leaf) {
+    Get-Content -LiteralPath $ReportPath -Raw -Encoding utf8
   }
   else {
     "No red-team report was generated."
@@ -410,8 +461,9 @@ function Add-RedteamPrComment {
 ## Codex Red-Team Review
 
 - decision: `$Decision`
+- attempt: `$Attempt`
 - status context: `$RedteamStatusContext`
-- local report: `$RedteamReportPath`
+- local report: `$ReportPath`
 
 $report
 "@
@@ -422,6 +474,225 @@ $report
   }
   finally {
     Remove-Item -LiteralPath $bodyFile -Force -ErrorAction SilentlyContinue
+  }
+}
+
+function Invoke-CodexReviewResponse {
+  param(
+    [string]$TargetRoot,
+    [string]$Repo,
+    [string]$PrNumber,
+    [string]$CommitSha,
+    [string]$ReportPath,
+    [string]$DiffStat,
+    [string]$DiffNumstat,
+    [string[]]$ChangedFiles,
+    [string[]]$AllowedPathPatterns,
+    [string[]]$DeniedPathPatterns,
+    [int]$Attempt
+  )
+
+  $attemptPromptPath = Get-AttemptArtifactPath -Name "review-response-prompt" -Attempt $Attempt
+  $attemptSummaryPath = Get-AttemptArtifactPath -Name "review-response-summary" -Attempt $Attempt
+  $attemptLastMessagePath = Get-AttemptArtifactPath -Name "review-response-last-message" -Attempt $Attempt
+  $changedText = ($ChangedFiles | ForEach-Object { "- $_" }) -join [Environment]::NewLine
+  $allowedText = ($AllowedPathPatterns | ForEach-Object { "- $_" }) -join [Environment]::NewLine
+  $deniedText = ($DeniedPathPatterns | ForEach-Object { "- $_" }) -join [Environment]::NewLine
+  $report = if (Test-Path -LiteralPath $ReportPath -PathType Leaf) {
+    Get-Content -LiteralPath $ReportPath -Raw -Encoding utf8
+  }
+  else {
+    "No red-team report file was found."
+  }
+
+  $prompt = @"
+# Codex Review Response
+
+You are responding to a red-team review on an automated self-improvement pull request.
+Write the response summary in Korean.
+You may edit files in the target repository, but you must not commit, push, merge, create pull requests, change remotes, or print secrets.
+Do not read or use publisher tokens. Stay within the allowed paths.
+
+## Target
+
+- repository: $Repo
+- pull request: #$PrNumber
+- current commit: $CommitSha
+- response attempt: $Attempt
+
+## Allowed Paths
+
+$allowedText
+
+## Denied Paths
+
+$deniedText
+
+## Pull Request Changed Files
+
+$changedText
+
+## Current PR Diff Stat
+
+````text
+$DiffStat
+````
+
+## Current PR Diff Numstat
+
+````text
+$DiffNumstat
+````
+
+## Red-Team Report To Address
+
+````markdown
+$report
+````
+
+## Required Workflow
+
+1. Inspect only the files needed to address the red-team findings.
+2. Make the smallest safe correction within the allowed paths.
+3. Do not broaden the PR scope.
+4. If the finding requires a denied path, secret, workflow, auth, infra, migration, or dependency change, leave the worktree unchanged and explain that it requires human handling.
+5. Do not commit, push, merge, or create/update pull requests.
+6. Finish with a concise Korean summary of changed files and remaining risk.
+"@
+
+  [System.IO.File]::WriteAllText($attemptPromptPath, $prompt, [System.Text.UTF8Encoding]::new($false))
+
+  $codex = Get-CodexExecutable
+  Write-Log "RUN [$TargetRoot] codex review-response attempt=$Attempt"
+  Push-Location $TargetRoot
+  try {
+    $inputText = Get-Content -LiteralPath $attemptPromptPath -Raw -Encoding utf8
+    $script:CodexReviewResponseExitCode = 0
+    Invoke-WithPublisherEnvCleared {
+      $inputText | & $codex exec --cd $TargetRoot --sandbox workspace-write --full-auto --output-last-message $attemptLastMessagePath - *>> $LogPath
+      $script:CodexReviewResponseExitCode = $LASTEXITCODE
+    }
+    if ($script:CodexReviewResponseExitCode -ne 0) {
+      "Codex review response failed with exit code $($script:CodexReviewResponseExitCode)." | Set-Content -LiteralPath $attemptSummaryPath -Encoding utf8
+      Copy-Item -LiteralPath $attemptSummaryPath -Destination $ReviewResponseSummaryPath -Force
+      throw "Codex review response failed. See $attemptSummaryPath"
+    }
+  }
+  finally {
+    Pop-Location
+  }
+
+  if (Test-Path -LiteralPath $attemptLastMessagePath -PathType Leaf) {
+    Copy-Item -LiteralPath $attemptLastMessagePath -Destination $attemptSummaryPath -Force
+  }
+  else {
+    "Codex review response did not produce a last-message summary." | Set-Content -LiteralPath $attemptSummaryPath -Encoding utf8
+  }
+  Copy-Item -LiteralPath $attemptSummaryPath -Destination $ReviewResponseSummaryPath -Force
+  return $attemptSummaryPath
+}
+
+function Add-ReviewResponsePrComment {
+  param(
+    [string]$Repo,
+    [string]$PrNumber,
+    [string]$SummaryPath,
+    [string[]]$ChangedFiles,
+    [int]$Attempt
+  )
+  $summary = if (Test-Path -LiteralPath $SummaryPath -PathType Leaf) {
+    Get-Content -LiteralPath $SummaryPath -Raw -Encoding utf8
+  }
+  else {
+    "No review-response summary was generated."
+  }
+  if ($summary.Length -gt 6000) {
+    $summary = $summary.Substring(0, 6000) + "`n`n...(truncated)"
+  }
+  $changedText = if ($ChangedFiles.Count -gt 0) {
+    ($ChangedFiles | ForEach-Object { "- $_" }) -join [Environment]::NewLine
+  }
+  else {
+    "- none"
+  }
+
+  $body = @"
+## Codex Review Response
+
+- attempt: `$Attempt`
+- local summary: `$SummaryPath`
+
+Changed files:
+
+$changedText
+
+$summary
+"@
+  $bodyFile = New-TemporaryFile
+  try {
+    [System.IO.File]::WriteAllText($bodyFile, $body, [System.Text.UTF8Encoding]::new($false))
+    Invoke-GhNative -Arguments @("pr", "comment", $PrNumber, "--repo", $Repo, "--body-file", $bodyFile)
+  }
+  finally {
+    Remove-Item -LiteralPath $bodyFile -Force -ErrorAction SilentlyContinue
+  }
+}
+
+function Get-PullRequestChangedFiles {
+  param(
+    [string]$TargetRoot,
+    [string]$BaseBranch
+  )
+  $output = Get-GitOutput -Arguments @("diff", "--name-only", "$BaseBranch...HEAD") -WorkingDirectory $TargetRoot
+  if (-not $output) {
+    return @()
+  }
+  return @($output -split "\r?\n" | Where-Object { $_ } | ForEach-Object { $_.Replace("\", "/") })
+}
+
+function Get-PullRequestDiffStat {
+  param(
+    [string]$TargetRoot,
+    [string]$BaseBranch
+  )
+  return Get-GitOutput -Arguments @("diff", "$BaseBranch...HEAD", "--stat") -WorkingDirectory $TargetRoot
+}
+
+function Get-PullRequestDiffNumstat {
+  param(
+    [string]$TargetRoot,
+    [string]$BaseBranch
+  )
+  return Get-GitOutput -Arguments @("diff", "$BaseBranch...HEAD", "--numstat") -WorkingDirectory $TargetRoot
+}
+
+function Wait-ForPullRequestMerged {
+  param(
+    [string]$Repo,
+    [string]$PrNumber,
+    [int]$TimeoutSeconds,
+    [int]$PollSeconds
+  )
+  if ($TimeoutSeconds -le 0) {
+    Write-Log "Merge wait disabled. Not polling PR #$PrNumber."
+    return
+  }
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  while ($true) {
+    $jsonText = Invoke-GhOutput -Arguments @("pr", "view", $PrNumber, "--repo", $Repo, "--json", "state,mergeStateStatus,url")
+    $data = $jsonText | ConvertFrom-Json
+    Write-Log "PR #$PrNumber state=$($data.state) mergeStateStatus=$($data.mergeStateStatus)"
+    if ($data.state -eq "MERGED") {
+      Write-Log "PR #$PrNumber merged."
+      return
+    }
+    if ($data.state -eq "CLOSED") {
+      throw "PR #$PrNumber closed before merge."
+    }
+    if ((Get-Date) -ge $deadline) {
+      throw "Timed out waiting for PR #$PrNumber to merge after $TimeoutSeconds seconds."
+    }
+    Start-Sleep -Seconds ([Math]::Max(1, $PollSeconds))
   }
 }
 
@@ -725,6 +996,9 @@ if ($DryRun) {
   Write-Log "Allow local publisher auth: $($AllowLocalPublisherAuth.IsPresent)"
   Write-Log "Red-team status context: $RedteamStatusContext"
   Write-Log "Skip red-team: $($SkipRedteam.IsPresent)"
+  Write-Log "Max review responses: $MaxReviewResponses"
+  Write-Log "Merge wait timeout seconds: $MergeWaitTimeoutSeconds"
+  Write-Log "Merge poll seconds: $MergePollSeconds"
   exit 0
 }
 
@@ -805,9 +1079,6 @@ try {
   $PublisherToken = Set-PublisherIdentity
   Invoke-GitPush -BranchName $branchName -WorkingDirectory $TargetRoot -Token $PublisherToken
   $headSha = Get-GitOutput -Arguments @("rev-parse", "HEAD") -WorkingDirectory $TargetRoot
-  if (-not $SkipRedteam) {
-    Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "pending" -Context $RedteamStatusContext -Description "Codex red-team review is running."
-  }
 
   $changedList = ($changed | ForEach-Object { "- ``$_``" }) -join [Environment]::NewLine
   $verifyList = ($TargetVerifyCommands + @(
@@ -859,29 +1130,105 @@ try {
   }
 
   if (-not $SkipRedteam) {
-    $redteamDecision = Invoke-CodexRedteamReview `
-      -TargetRoot $TargetRoot `
-      -Repo $TargetRepo `
-      -PrNumber $prNumber `
-      -CommitSha $headSha `
-      -Risk $Risk `
-      -DiffStat $DiffStat `
-      -DiffNumstat $DiffNumstat `
-      -ChangedFiles $changed
-    Add-RedteamPrComment -Repo $TargetRepo -PrNumber $prNumber -Decision $redteamDecision
-    if ($redteamDecision -eq "PASS") {
-      Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "success" -Context $RedteamStatusContext -Description "Codex red-team review passed."
-    }
-    else {
+    $reviewAttempt = 1
+    $maxReviewAttempts = 1 + [Math]::Max(0, $MaxReviewResponses)
+    while ($true) {
+      $headSha = Get-GitOutput -Arguments @("rev-parse", "HEAD") -WorkingDirectory $TargetRoot
+      $prChangedFiles = Get-PullRequestChangedFiles -TargetRoot $TargetRoot -BaseBranch $BaseBranch
+      $prDiffStat = Get-PullRequestDiffStat -TargetRoot $TargetRoot -BaseBranch $BaseBranch
+      $prDiffNumstat = Get-PullRequestDiffNumstat -TargetRoot $TargetRoot -BaseBranch $BaseBranch
+      Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "pending" -Context $RedteamStatusContext -Description "Codex red-team review attempt $reviewAttempt is running."
+
+      $redteamResult = Invoke-CodexRedteamReview `
+        -TargetRoot $TargetRoot `
+        -Repo $TargetRepo `
+        -PrNumber $prNumber `
+        -CommitSha $headSha `
+        -Risk $Risk `
+        -DiffStat $prDiffStat `
+        -DiffNumstat $prDiffNumstat `
+        -ChangedFiles $prChangedFiles `
+        -Attempt $reviewAttempt
+      Add-RedteamPrComment -Repo $TargetRepo -PrNumber $prNumber -Decision $redteamResult.Decision -ReportPath $redteamResult.ReportPath -Attempt $reviewAttempt
+      if ($redteamResult.Decision -eq "PASS") {
+        Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "success" -Context $RedteamStatusContext -Description "Codex red-team review passed."
+        break
+      }
+
       Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "failure" -Context $RedteamStatusContext -Description "Codex red-team review failed."
-      throw "Codex red-team review failed. See $RedteamReportPath"
+      if ($reviewAttempt -ge $maxReviewAttempts) {
+        throw "Codex red-team review failed after $reviewAttempt attempt(s). See $($redteamResult.ReportPath)"
+      }
+      if ($Risk.publish_mode -ne "pull_request") {
+        throw "Codex red-team review failed for publish_mode=$($Risk.publish_mode); automatic review response is disabled outside pull_request mode."
+      }
+
+      $responseSummaryPath = Invoke-CodexReviewResponse `
+        -TargetRoot $TargetRoot `
+        -Repo $TargetRepo `
+        -PrNumber $prNumber `
+        -CommitSha $headSha `
+        -ReportPath $redteamResult.ReportPath `
+        -DiffStat $prDiffStat `
+        -DiffNumstat $prDiffNumstat `
+        -ChangedFiles $prChangedFiles `
+        -AllowedPathPatterns $AllowedPathPatterns `
+        -DeniedPathPatterns $DeniedPathPatterns `
+        -Attempt $reviewAttempt
+
+      $responseChanged = Get-ChangedFiles -TargetRoot $TargetRoot
+      if ($responseChanged.Count -eq 0) {
+        throw "Review response attempt $reviewAttempt produced no target changes. See $responseSummaryPath"
+      }
+      $responsePatchPath = Get-AttemptArtifactPath -Name "review-response" -Attempt $reviewAttempt -Extension "patch"
+      Save-PatchArtifact -TargetRoot $TargetRoot -OutputPath $responsePatchPath
+      Assert-AllowedChanges `
+        -TargetRoot $TargetRoot `
+        -ChangedFiles $responseChanged `
+        -AllowedPathPatterns $AllowedPathPatterns `
+        -DeniedPathPatterns $DeniedPathPatterns `
+        -MaxFiles $MaxFiles `
+        -MaxLines $MaxLines
+
+      foreach ($command in $TargetVerifyCommands) {
+        Invoke-CommandLine -Command $command -WorkingDirectory $TargetRoot
+      }
+      Invoke-CommandLine -Command "python -m self_maintainer_bot.cli eval-docs --fail-under 1" -WorkingDirectory $BotRoot
+      Invoke-CommandLine -Command "git diff --check" -WorkingDirectory $TargetRoot
+      $Risk = Invoke-RiskClassifier -Scope $Scope
+      Write-Log "Review response risk classification: max_risk=$($Risk.max_risk) publish_mode=$($Risk.publish_mode)"
+      if ($Risk.publish_mode -ne "pull_request") {
+        throw "Review response exceeded auto-merge risk budget: publish_mode=$($Risk.publish_mode). See $RiskMarkdownPath"
+      }
+
+      foreach ($path in $responseChanged) {
+        Invoke-CommandLine -Command "git add -- `"$path`"" -WorkingDirectory $TargetRoot
+      }
+      $responseCommitFile = New-TemporaryFile
+      try {
+        $responseCommitMessage = @"
+[fix] red-team 리뷰 대응
+
+- Codex red-team report의 차단 사유를 반영
+- 자동 자가 개선 PR의 재검토를 위한 보정 커밋 추가
+"@
+        [System.IO.File]::WriteAllText($responseCommitFile, $responseCommitMessage, [System.Text.UTF8Encoding]::new($false))
+        Invoke-CommandLine -Command "git commit --trailer `"Co-authored-by: Codex`" -F `"$responseCommitFile`"" -WorkingDirectory $TargetRoot
+      }
+      finally {
+        Remove-Item -LiteralPath $responseCommitFile -Force -ErrorAction SilentlyContinue
+      }
+      Invoke-GitPush -BranchName $branchName -WorkingDirectory $TargetRoot -Token $PublisherToken
+      Add-ReviewResponsePrComment -Repo $TargetRepo -PrNumber $prNumber -SummaryPath $responseSummaryPath -ChangedFiles $responseChanged -Attempt $reviewAttempt
+      $reviewAttempt += 1
     }
   }
 
   if ($ResolvedAutoMerge -and $Risk.publish_mode -eq "pull_request") {
     Invoke-CommandLine -Command "gh pr checks $prNumber --repo $TargetRepo --watch" -WorkingDirectory $TargetRoot
 
-    $mergeArgs = @("pr", "merge", $prNumber, "--repo", $TargetRepo, "--delete-branch")
+    $headSha = Get-GitOutput -Arguments @("rev-parse", "HEAD") -WorkingDirectory $TargetRoot
+    $mergeArgs = @("pr", "merge", $prNumber, "--repo", $TargetRepo, "--delete-branch", "--match-head-commit", $headSha)
     $mergeBody = "자동 자가 개선 결과를 병합합니다."
     if ($MergeMethod -eq "squash") {
       $mergeArgs += @("--squash", "--subject", $title, "--body", $mergeBody)
@@ -893,6 +1240,7 @@ try {
       $mergeArgs += @("--merge", "--subject", $title, "--body", $mergeBody)
     }
     Invoke-NativeCommand -FilePath "gh" -Arguments $mergeArgs -WorkingDirectory $TargetRoot
+    Wait-ForPullRequestMerged -Repo $TargetRepo -PrNumber $prNumber -TimeoutSeconds $MergeWaitTimeoutSeconds -PollSeconds $MergePollSeconds
     Invoke-CommandLine -Command "git switch $BaseBranch" -WorkingDirectory $TargetRoot
     Invoke-CommandLine -Command "git pull --ff-only origin $BaseBranch" -WorkingDirectory $TargetRoot
   }

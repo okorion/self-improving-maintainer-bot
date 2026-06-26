@@ -76,5 +76,7 @@
 
 - R1 PR은 `check`와 `codex-redteam`이 모두 green일 때만 merge queue로 들어간다.
 - red-team report는 PR comment와 로컬 `runs/scheduler/*-redteam-report.md`에 남는다.
+- red-team FAIL은 `MaxReviewResponses` 한도 안에서 review-response 커밋으로 대응하고 재리뷰한다.
+- auto-merge 회차는 PR이 실제 `MERGED` 상태가 된 뒤에 다음 회차로 넘어간다.
 - R2 draft PR은 red-team review를 받을 수 있지만 auto-merge하지 않는다.
 - R3/proposal-only 변경은 PR publish 전에 차단되어야 한다.

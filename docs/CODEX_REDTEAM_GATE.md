@@ -7,13 +7,17 @@
 ```text
 worker generates patch
 publisher pushes branch
-publisher sets codex-redteam=pending
 publisher creates PR
+publisher sets codex-redteam=pending on the current head
 Codex CLI reviews the PR diff in read-only mode
 publisher comments the red-team report
-publisher sets codex-redteam=success or failure
+if review fails, Codex responds with a scoped fix commit
+publisher pushes the response commit
+Codex CLI re-reviews the updated PR
+publisher sets codex-redteam=success or failure on the current head
 CI check + codex-redteam pass
 merge queue / auto merge
+runner waits until PR state is MERGED
 ```
 
 ## Policy
@@ -22,9 +26,13 @@ merge queue / auto merge
 - Publisher token environment variables are cleared while Codex red-team review runs.
 - The review must end with `REDTEAM_DECISION: PASS` or `REDTEAM_DECISION: FAIL`.
 - Missing or malformed decision is treated as `FAIL`.
+- A failed red-team review can be handled by a bounded review-response loop.
+- Review response runs with `--sandbox workspace-write --full-auto`, but publisher token environment variables are still cleared.
+- Review response must stay within target `allowPaths` and is reclassified before it can be committed.
 - R3/proposal-only changes must not reach PR publish.
 - R2 draft PRs can receive a red-team report, but auto-merge remains disabled.
 - R1 PRs can auto-merge only after `check` and `codex-redteam` are both green.
+- Auto-merge mode waits for the PR to reach `MERGED` before the next loop starts.
 
 ## Branch Protection Mode
 
@@ -59,6 +67,24 @@ Local publisher auth experiment:
 
 ```powershell
 .\scripts\auto-improve-target-once.ps1 -Profile no-js-visual-lab -AutoMerge -AllowLocalPublisherAuth
+```
+
+Run three serial loops for every overtura target profile:
+
+```powershell
+.\scripts\run-target-auto-improve-loops.ps1 -Iterations 3 -AutoMerge -AllowLocalPublisherAuth
+```
+
+Dry-run the same batch before running it:
+
+```powershell
+.\scripts\run-target-auto-improve-loops.ps1 -Iterations 3 -AutoMerge -AllowLocalPublisherAuth -DryRun
+```
+
+Tune review response and merge waiting:
+
+```powershell
+.\scripts\auto-improve-target-once.ps1 -Profile no-js-visual-lab -AutoMerge -MaxReviewResponses 2 -MergeWaitTimeoutSeconds 900 -MergePollSeconds 15
 ```
 
 Skip red-team only for emergency diagnostics:
