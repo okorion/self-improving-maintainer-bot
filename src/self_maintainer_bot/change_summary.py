@@ -47,7 +47,7 @@ def summarize_target_change(settings: Settings, *, kind: str = "auto") -> Target
     subject = _subject_for(resolved_kind, changed_files)
     title = f"[{KIND_PREFIX[resolved_kind]}] {subject}"
     intent = _intent_for(resolved_kind, primary_area)
-    file_lines = "\n".join(f"- `{path}`: {_file_summary(path, resolved_kind)}" for path in changed_files)
+    file_lines = "\n".join(f"- `{path}`: {_file_summary(root, path, resolved_kind)}" for path in changed_files)
     if not file_lines:
         file_lines = "- 변경 파일 없음"
 
@@ -163,16 +163,88 @@ def _intent_for(kind: str, primary_area: str) -> str:
     return f"{primary_area}에 작고 검증 가능한 사용자 기능 개선을 추가합니다."
 
 
-def _file_summary(path: str, kind: str) -> str:
+def _file_summary(root: Path, path: str, kind: str) -> str:
+    diff_text = _git_text(root, ["diff", "--", path])
+    added, removed = _diff_line_counts(diff_text)
+    role = _path_role(path)
+    change = _change_phrase(path, kind)
+    detail = _first_added_signal(diff_text)
+    size = f"+{added}/-{removed}"
+    if detail:
+        return f"{role}에서 {change} 변경을 반영했습니다. 변경 규모는 {size}이며, 핵심 추가 단서는 '{detail}'입니다."
+    return f"{role}에서 {change} 변경을 반영했습니다. 변경 규모는 {size}입니다."
+
+
+def _git_text(root: Path, args: list[str]) -> str:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=True,
+    )
+    return result.stdout
+
+
+def _diff_line_counts(diff_text: str) -> tuple[int, int]:
+    added = 0
+    removed = 0
+    for line in diff_text.splitlines():
+        if line.startswith("+++") or line.startswith("---"):
+            continue
+        if line.startswith("+"):
+            added += 1
+        elif line.startswith("-"):
+            removed += 1
+    return added, removed
+
+
+def _first_added_signal(diff_text: str) -> str:
+    for line in diff_text.splitlines():
+        if not line.startswith("+") or line.startswith("+++"):
+            continue
+        candidate = line[1:].strip()
+        if not candidate or candidate in {"{", "}", ");", "};"}:
+            continue
+        candidate = " ".join(candidate.split())
+        if len(candidate) > 96:
+            candidate = candidate[:93].rstrip() + "..."
+        return candidate
+    return ""
+
+
+def _path_role(path: str) -> str:
+    if path == "README.md":
+        return "프로젝트 첫 안내"
+    if path == "DESIGN.md":
+        return "디자인 시스템 문서"
+    if path == "index.html":
+        return "기본 화면 구조"
+    if path == "styles.css" or path.endswith(".css"):
+        return "시각 스타일"
+    if path.startswith("src/"):
+        return "애플리케이션 구현"
+    if path.startswith("scripts/"):
+        return "자동화 스크립트"
+    if path.startswith("docs/"):
+        return "보조 문서"
+    if path.startswith("maintainer-bot/"):
+        return "자가 개선 설정"
+    return "프로젝트 파일"
+
+
+def _change_phrase(path: str, kind: str) -> str:
     if kind == "docs":
-        return "문서 설명 또는 유지보수 기준을 보강했습니다."
+        return "설명과 유지보수 기준을 명확히 하는"
     if kind == "style":
-        return "시각 표현이나 레이아웃 관련 변경을 반영했습니다."
+        return "화면 가독성, 레이아웃, 접근성을 다듬는"
     if kind == "refactor":
-        return "동작을 유지하면서 구조를 정리했습니다."
+        return "동작을 유지하면서 구조와 중복을 정리하는"
     if path in {"index.html", "styles.css"} or path.startswith("src/"):
-        return "사용자 경험에 영향을 주는 기능 개선을 반영했습니다."
-    return "기능 개선에 필요한 보조 변경을 반영했습니다."
+        return "사용자 경험에 직접 영향을 주는"
+    return "기능 개선을 뒷받침하는"
 
 
 def _has_file(changed_files: list[str], filename: str) -> bool:

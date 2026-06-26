@@ -4,55 +4,16 @@
 
 {{CHANGE_SUMMARY}}
 
-## 주요 변경
+## 자동 검토 요약
 
-- 실행 ID: `{{RUN_ID}}`
-- profile: `{{PROFILE}}`
-- target repo: `{{TARGET_REPOSITORY}}`
-- input commit: `{{INPUT_COMMIT}}`
-- profile/control-plane commit: `{{PROFILE_VERSION}}`
-- scope: `{{SCOPE}}`
-- improvement kind: `{{IMPROVEMENT_KIND}}`
-- max risk: `{{MAX_RISK}}`
-- publish mode: `{{PUBLISH_MODE}}`
-- changed files: `{{CHANGED_FILE_COUNT}}`
-- changed lines: `{{CHANGED_LINE_COUNT}}`
-- 변경 파일:
-{{CHANGED_FILES}}
+- 대상 레포: `{{TARGET_REPOSITORY}}`
+- 개선 유형: `{{IMPROVEMENT_KIND}}`
+- 변경 규모: 파일 `{{CHANGED_FILE_COUNT}}`개, 라인 `{{CHANGED_LINE_COUNT}}`줄
+- 위험 등급: `{{MAX_RISK}}`
+- 게시 방식: `{{PUBLISH_MODE}}`
+- red-team 상태 컨텍스트: `{{REDTEAM_STATUS_CONTEXT}}`
 
-## Risk Guard
+## 후속 확인
 
-Denied files:
-{{DENIED_FILES}}
-
-Outside allowPaths:
-{{DISALLOWED_FILES}}
-
-## Diff Stat
-
-```text
-{{DIFF_STAT}}
-```
-
-## Diff Numstat
-
-```text
-{{DIFF_NUMSTAT}}
-```
-
-## 검증
-
-{{VERIFY_COMMANDS}}
-
-## 로컬 Evidence
-
-- patch artifact: `{{PATCH_ARTIFACT}}`
-- risk report: `{{RISK_REPORT}}`
-- red-team report: `{{REDTEAM_REPORT}}`
-- red-team status: `{{REDTEAM_STATUS_CONTEXT}}`
-- scheduler log: `{{LOG_PATH}}`
-
-## 남은 위험
-
-- 자동 생성 변경이므로 병합 후에도 다음 루프에서 회귀 여부를 다시 확인합니다.
-- CI나 로컬 검증이 실패하면 이 PR은 자동 병합하지 않습니다.
+- 자동 red-team 리뷰가 통과한 뒤 병합합니다.
+- 검증 또는 리뷰 대응에서 차단 사유가 남으면 자동으로 보정 커밋을 추가하고 재검토합니다.

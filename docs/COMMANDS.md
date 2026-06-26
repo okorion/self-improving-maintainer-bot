@@ -174,6 +174,6 @@ This writes `docs/PROJECT_STATUS.md`.
 .\scripts\auto-improve-target-once.ps1 -Profile no-js-visual-lab -AutoMerge
 .\scripts\auto-improve-target-once.ps1 -Profile no-js-visual-lab -AutoMerge -AllowLocalPublisherAuth
 .\scripts\run-target-auto-improve-loops.ps1 -Iterations 3 -AutoMerge -AllowLocalPublisherAuth
-.\scripts\run-target-auto-improve-loops.ps1 -Iterations 3 -AutoMerge -AllowLocalPublisherAuth -MaxReviewResponses 2 -MaxClosedPrReplacements 2
-.\scripts\run-target-auto-improve-loops.ps1 -Iterations 3 -ParallelProfiles -AutoMerge -AllowLocalPublisherAuth -MaxReviewResponses 2 -MaxClosedPrReplacements 2
+.\scripts\run-target-auto-improve-loops.ps1 -Iterations 3 -AutoMerge -AllowLocalPublisherAuth -MaxReviewResponses 6 -MaxClosedPrReplacements 3
+.\scripts\run-target-auto-improve-loops.ps1 -Iterations 3 -ParallelProfiles -AutoMerge -AllowLocalPublisherAuth -MaxReviewResponses 6 -MaxClosedPrReplacements 3
 ```

@@ -15,7 +15,7 @@ param(
   [switch]$AllowLocalPublisherAuth,
   [string]$RedteamStatusContext = "codex-redteam",
   [switch]$SkipRedteam,
-  [int]$MaxReviewResponses = 2,
+  [int]$MaxReviewResponses = 6,
   [bool]$ClosePrOnReviewFailure = $true,
   [int]$ReviewFailureExitCode = 20,
   [int]$MergeWaitTimeoutSeconds = 900,
@@ -539,12 +539,11 @@ function Add-RedteamPrComment {
   }
 
   $body = @"
-## Codex Red-Team Review
+## Codex Red-Team 리뷰
 
-- decision: ``$Decision``
-- attempt: ``$Attempt``
-- status context: ``$RedteamStatusContext``
-- local report: ``$ReportPath``
+- 판정: ``$Decision``
+- 시도: ``$Attempt``
+- 상태 컨텍스트: ``$RedteamStatusContext``
 
 $report
 "@
@@ -754,12 +753,11 @@ function Add-ReviewResponsePrComment {
   }
 
   $body = @"
-## Codex Review Response
+## Codex 리뷰 대응
 
-- attempt: ``$Attempt``
-- local summary: ``$SummaryPath``
+- 시도: ``$Attempt``
 
-Changed files:
+변경 파일:
 
 $changedText
 
@@ -898,10 +896,12 @@ function Close-ReviewFailedPullRequest {
     throw $Reason
   }
 
-  $comment = "Codex red-team review response limit was reached. Closing this PR and allowing the scheduler to search for a new improvement candidate. Reason: $Reason"
-  if ($ReportPath) {
-    $comment = "$comment Report: $ReportPath"
-  }
+  $comment = @"
+Codex red-team 리뷰 대응 한도에 도달해 이 PR을 닫고 새 개선 후보를 찾습니다.
+
+사유: $Reason
+다음 동작: 같은 반복 회차에서 다른 개선 후보를 생성해 새 PR을 엽니다.
+"@
   Write-Log "Closing PR #$PrNumber after review failure: $Reason"
   Invoke-GhNative -Arguments @("pr", "close", $PrNumber, "--repo", $Repo, "--comment", $comment, "--delete-branch")
   Switch-TargetToBaseForReplacement -TargetRoot $TargetRoot -BaseBranch $BaseBranch -BranchName $BranchName
@@ -1287,7 +1287,8 @@ try {
   else {
     Invoke-WithPublisherEnvCleared {
       Invoke-CommandLine -Command "python -m self_maintainer_bot.cli eval-docs --fail-under 0" -WorkingDirectory $BotRoot
-      Invoke-CommandLine -Command "python -m self_maintainer_bot.cli codex-local-loop --scope $Scope --improvement-kind $ImprovementKind --execute" -WorkingDirectory $BotRoot
+      $targetGoal = "Find one repository-specific $ImprovementKind improvement for $TargetRepo. Inspect this target repository's README, DESIGN/docs, source, and recent local changes before editing. Do not copy topics from other target repositories. Prefer a small user-visible feat, style, or refactor change over docs unless docs is explicitly requested."
+      Invoke-CommandLine -Command "python -m self_maintainer_bot.cli codex-local-loop --goal `"$targetGoal`" --scope $Scope --improvement-kind $ImprovementKind --execute" -WorkingDirectory $BotRoot
     }
   }
 
@@ -1415,7 +1416,7 @@ try {
       $prChangedFiles = Get-PullRequestChangedFiles -TargetRoot $TargetRoot -BaseBranch $BaseBranch
       $prDiffStat = Get-PullRequestDiffStat -TargetRoot $TargetRoot -BaseBranch $BaseBranch
       $prDiffNumstat = Get-PullRequestDiffNumstat -TargetRoot $TargetRoot -BaseBranch $BaseBranch
-      Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "pending" -Context $RedteamStatusContext -Description "Codex red-team review attempt $reviewAttempt is running."
+      Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "pending" -Context $RedteamStatusContext -Description "Codex red-team 리뷰 $reviewAttempt 번째 시도 진행 중"
 
       $redteamResult = Invoke-CodexRedteamReview `
         -TargetRoot $TargetRoot `
@@ -1429,13 +1430,13 @@ try {
         -Attempt $reviewAttempt
       $redteamCommentId = Add-RedteamPrComment -Repo $TargetRepo -PrNumber $prNumber -Decision $redteamResult.Decision -ReportPath $redteamResult.ReportPath -Attempt $reviewAttempt
       if ($redteamResult.Decision -eq "PASS") {
-        Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "success" -Context $RedteamStatusContext -Description "Codex red-team review passed."
+        Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "success" -Context $RedteamStatusContext -Description "Codex red-team 리뷰 통과"
         Add-IssueCommentReaction -Repo $TargetRepo -CommentId $redteamCommentId -Content "+1"
         Add-RedteamHandlingComment -Repo $TargetRepo -PrNumber $prNumber -RedteamCommentId $redteamCommentId -Outcome "pass" -Attempt $reviewAttempt
         break
       }
 
-      Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "failure" -Context $RedteamStatusContext -Description "Codex red-team review failed."
+      Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "failure" -Context $RedteamStatusContext -Description "Codex red-team 리뷰 실패"
       Add-IssueCommentReaction -Repo $TargetRepo -CommentId $redteamCommentId -Content "eyes"
       if ($reviewAttempt -ge $maxReviewAttempts) {
         Close-ReviewFailedPullRequest `
@@ -1444,7 +1445,7 @@ try {
           -BranchName $branchName `
           -TargetRoot $TargetRoot `
           -BaseBranch $BaseBranch `
-          -Reason "Codex red-team review failed after $reviewAttempt attempt(s)." `
+          -Reason "Codex red-team 리뷰가 $reviewAttempt 회 시도 후에도 실패했습니다." `
           -ReportPath $redteamResult.ReportPath
       }
       if ($Risk.publish_mode -ne "pull_request") {
@@ -1454,7 +1455,7 @@ try {
           -BranchName $branchName `
           -TargetRoot $TargetRoot `
           -BaseBranch $BaseBranch `
-          -Reason "Codex red-team review failed for publish_mode=$($Risk.publish_mode); automatic review response is disabled outside pull_request mode." `
+          -Reason "publish_mode=$($Risk.publish_mode) 상태에서는 자동 리뷰 대응을 진행하지 않습니다." `
           -ReportPath $redteamResult.ReportPath
       }
 
@@ -1479,7 +1480,7 @@ try {
           -BranchName $branchName `
           -TargetRoot $TargetRoot `
           -BaseBranch $BaseBranch `
-          -Reason "Review response attempt $reviewAttempt produced no target changes." `
+          -Reason "리뷰 대응 $reviewAttempt 번째 시도에서 타깃 변경이 생성되지 않았습니다." `
           -ReportPath $responseSummaryPath
       }
       $responsePatchPath = Get-AttemptArtifactPath -Name "review-response" -Attempt $reviewAttempt -Extension "patch"
@@ -1506,7 +1507,7 @@ try {
           -BranchName $branchName `
           -TargetRoot $TargetRoot `
           -BaseBranch $BaseBranch `
-          -Reason "Review response exceeded auto-merge risk budget: publish_mode=$($Risk.publish_mode)." `
+          -Reason "리뷰 대응 결과가 자동 병합 위험 한도를 초과했습니다. publish_mode=$($Risk.publish_mode)" `
           -ReportPath $RiskMarkdownPath
       }
 

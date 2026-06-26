@@ -94,8 +94,8 @@ Dry-run the same batch before running it:
 Tune review response and merge waiting:
 
 ```powershell
-.\scripts\auto-improve-target-once.ps1 -Profile no-js-visual-lab -AutoMerge -MaxReviewResponses 2 -MergeWaitTimeoutSeconds 900 -MergePollSeconds 15
-.\scripts\run-target-auto-improve-loops.ps1 -Iterations 3 -AutoMerge -MaxReviewResponses 2 -MaxClosedPrReplacements 2
+.\scripts\auto-improve-target-once.ps1 -Profile no-js-visual-lab -AutoMerge -MaxReviewResponses 6 -MergeWaitTimeoutSeconds 900 -MergePollSeconds 15
+.\scripts\run-target-auto-improve-loops.ps1 -Iterations 3 -AutoMerge -MaxReviewResponses 6 -MaxClosedPrReplacements 3
 ```
 
 Skip red-team only for emergency diagnostics:

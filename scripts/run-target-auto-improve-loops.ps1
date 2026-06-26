@@ -9,8 +9,8 @@ param(
   [string[]]$NonDocsSequence = @("feat", "style", "refactor"),
   [switch]$AutoMerge,
   [switch]$AllowLocalPublisherAuth,
-  [int]$MaxReviewResponses = 2,
-  [int]$MaxClosedPrReplacements = 2,
+  [int]$MaxReviewResponses = 6,
+  [int]$MaxClosedPrReplacements = 3,
   [int]$ReviewFailureExitCode = 20,
   [int]$MergeWaitTimeoutSeconds = 900,
   [int]$MergePollSeconds = 15,
@@ -113,14 +113,24 @@ function Get-ImprovementState {
   }
   $profileData = Get-ProfileData -ProfileName $ProfileName
   $docsStreak = Get-RecentMergedDocsStreak -Repo ([string]$profileData.repository)
+  $offset = Get-ProfileSequenceOffset -ProfileName $ProfileName
   return [pscustomobject]@{
     profile = $ProfileName
     repository = [string]$profileData.repository
     docsStreak = $docsStreak
-    nonDocsIndex = 0
+    nonDocsIndex = $offset
     lastKind = ""
     updatedAt = ""
   }
+}
+
+function Get-ProfileSequenceOffset {
+  param([string]$ProfileName)
+  $sum = 0
+  foreach ($char in $ProfileName.ToCharArray()) {
+    $sum += [int][char]$char
+  }
+  return ($sum % $NonDocsSequence.Count)
 }
 
 function Save-ImprovementState {
