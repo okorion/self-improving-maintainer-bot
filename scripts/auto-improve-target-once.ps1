@@ -18,6 +18,7 @@ param(
   [int]$MaxReviewResponses = 8,
   [bool]$ClosePrOnReviewFailure = $true,
   [int]$ReviewFailureExitCode = 20,
+  [int]$CodexUsageLimitExitCode = 30,
   [int]$MergeWaitTimeoutSeconds = 900,
   [int]$MergePollSeconds = 15,
   [ValidateSet("squash", "merge", "rebase")]
@@ -366,6 +367,38 @@ function Invoke-NativeCommand {
     $ErrorActionPreference = $previousErrorActionPreference
     if ($exitCode -ne 0) {
       throw "Command failed with exit code ${exitCode}: $FilePath $renderedArgs"
+    }
+  }
+  finally {
+    if ($null -ne $previousErrorActionPreference) {
+      $ErrorActionPreference = $previousErrorActionPreference
+    }
+    Pop-Location
+  }
+}
+
+function Invoke-CodexLocalLoop {
+  param(
+    [string[]]$Arguments,
+    [string]$WorkingDirectory
+  )
+  $renderedArgs = ($Arguments | ForEach-Object {
+    if ($_ -match "\s") { "`"$_`"" } else { $_ }
+  }) -join " "
+  Write-Log "RUN [$WorkingDirectory] python $renderedArgs"
+  Push-Location $WorkingDirectory
+  try {
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    python @Arguments *>> $LogPath
+    $exitCode = $LASTEXITCODE
+    $ErrorActionPreference = $previousErrorActionPreference
+    if ($exitCode -eq $CodexUsageLimitExitCode) {
+      Write-Log "Codex usage limit detected. Stop retrying this self-improvement loop until the account limit resets."
+      exit $CodexUsageLimitExitCode
+    }
+    if ($exitCode -ne 0) {
+      throw "Command failed with exit code ${exitCode}: python $renderedArgs"
     }
   }
   finally {
@@ -1467,7 +1500,7 @@ try {
       Invoke-CommandLine -Command "python -m self_maintainer_bot.cli eval-docs --fail-under 0" -WorkingDirectory $BotRoot
       $targetGoal = Get-TargetGoal -Repo $TargetRepo -Kind $ImprovementKind -ProfileObject $ProfileData
       [System.IO.File]::WriteAllText($GoalPath, $targetGoal, $script:Utf8NoBom)
-      Invoke-NativeCommand -FilePath "python" -Arguments @(
+      Invoke-CodexLocalLoop -Arguments @(
         "-m",
         "self_maintainer_bot.cli",
         "codex-local-loop",

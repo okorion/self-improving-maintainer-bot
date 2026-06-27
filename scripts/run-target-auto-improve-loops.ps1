@@ -12,6 +12,7 @@ param(
   [int]$MaxReviewResponses = 8,
   [int]$MaxClosedPrReplacements = 3,
   [int]$ReviewFailureExitCode = 20,
+  [int]$CodexUsageLimitExitCode = 30,
   [int]$MergeWaitTimeoutSeconds = 900,
   [int]$MergePollSeconds = 15,
   [switch]$ParallelProfiles,
@@ -245,6 +246,8 @@ function New-ChildArguments {
     [string]$MaxReviewResponses,
     "-ReviewFailureExitCode",
     [string]$ReviewFailureExitCode,
+    "-CodexUsageLimitExitCode",
+    [string]$CodexUsageLimitExitCode,
     "-MergeWaitTimeoutSeconds",
     [string]$MergeWaitTimeoutSeconds,
     "-MergePollSeconds",
@@ -292,6 +295,8 @@ if ($ParallelProfiles -and $Profile.Count -gt 1) {
       [string]$MaxClosedPrReplacements,
       "-ReviewFailureExitCode",
       [string]$ReviewFailureExitCode,
+      "-CodexUsageLimitExitCode",
+      [string]$CodexUsageLimitExitCode,
       "-MergeWaitTimeoutSeconds",
       [string]$MergeWaitTimeoutSeconds,
       "-MergePollSeconds",
@@ -356,6 +361,9 @@ if ($ParallelProfiles -and $Profile.Count -gt 1) {
   }
   if ($failed.Count -gt 0) {
     $labels = ($failed | ForEach-Object { "$($_.Profile):$($_.ExitCode)" }) -join ", "
+    if (($failed | Where-Object { [int]$_.ExitCode -eq $CodexUsageLimitExitCode }).Count -gt 0) {
+      throw "Parallel profile loops stopped because Codex usage limit was reached: $labels"
+    }
     throw "Parallel profile loops failed: $labels"
   }
   exit 0
@@ -378,6 +386,9 @@ foreach ($profileName in $Profile) {
           Update-ImprovementState -ProfileName $profileName -Kind $plan.Kind
         }
         break
+      }
+      if ($exitCode -eq $CodexUsageLimitExitCode) {
+        throw "Codex usage limit reached for profile=$profileName iteration=$iteration. Stop and retry after the account limit resets."
       }
       if ($exitCode -eq $ReviewFailureExitCode -and $replacement -lt $MaxClosedPrReplacements) {
         $replacement += 1

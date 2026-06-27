@@ -15,6 +15,9 @@ from self_maintainer_bot.risk import classify_changes, git_changed_files
 from self_maintainer_bot.target_repo import target_root
 
 
+CODEX_USAGE_LIMIT_EXIT_CODE = 30
+
+
 @dataclass(frozen=True)
 class CodexStatus:
     available: bool
@@ -31,6 +34,15 @@ class CodexRunResult:
     log_path: Path
     last_message_path: Path
     verification_returncode: int | None
+
+
+def is_codex_usage_limited(text: str) -> bool:
+    lower = text.lower()
+    return (
+        "you've hit your usage limit" in lower
+        or "you have hit your usage limit" in lower
+        or "usage limit" in lower and "try again" in lower
+    )
 
 
 def codex_command() -> list[str]:
@@ -183,6 +195,9 @@ def run_codex_task(
         stdout = (exc.stdout or "").strip() if isinstance(exc.stdout, str) else ""
         stderr_text = (exc.stderr or "").strip() if isinstance(exc.stderr, str) else ""
         stderr = f"Codex execution timed out after {timeout} seconds.\n{stderr_text}".strip()
+
+    if returncode != 0 and is_codex_usage_limited(f"{stdout}\n{stderr}"):
+        returncode = CODEX_USAGE_LIMIT_EXIT_CODE
 
     log_path.write_text(
         "\n".join(
