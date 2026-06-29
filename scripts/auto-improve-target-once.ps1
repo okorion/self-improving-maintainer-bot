@@ -409,6 +409,21 @@ function Invoke-CodexLocalLoop {
   }
 }
 
+function Test-CodexUsageLimitInLog {
+  param([string]$Path)
+
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    return $false
+  }
+
+  $bytes = [System.IO.File]::ReadAllBytes($Path)
+  $utf8Text = [System.Text.Encoding]::UTF8.GetString($bytes)
+  $utf16Text = [System.Text.Encoding]::Unicode.GetString($bytes)
+  $compactText = ($utf8Text + "`n" + $utf16Text) -replace "`0", ""
+
+  return $compactText -match "hit your usage limit|purchase more credits|try again at|Codex usage limit"
+}
+
 function Invoke-GitPush {
   param(
     [string]$BranchName,
@@ -714,6 +729,14 @@ REDTEAM_DECISION: FAIL
       $ErrorActionPreference = $previousErrorActionPreference
     }
     if ($script:CodexRedteamExitCode -ne 0) {
+      if (Test-CodexUsageLimitInLog -Path $LogPath) {
+        "Codex usage limit reached before red-team review completed." | Set-Content -LiteralPath $attemptReportPath -Encoding utf8
+        Copy-Item -LiteralPath $attemptReportPath -Destination $RedteamReportPath -Force
+        return [pscustomobject]@{
+          Decision = "USAGE_LIMIT"
+          ReportPath = $attemptReportPath
+        }
+      }
       "Codex red-team review command failed with exit code $($script:CodexRedteamExitCode)." | Set-Content -LiteralPath $attemptReportPath -Encoding utf8
       Copy-Item -LiteralPath $attemptReportPath -Destination $RedteamReportPath -Force
       return [pscustomobject]@{
@@ -925,6 +948,12 @@ $report
     if ($script:CodexReviewResponseExitCode -ne 0) {
       "Codex review response command failed with exit code $($script:CodexReviewResponseExitCode)." | Set-Content -LiteralPath $attemptSummaryPath -Encoding utf8
       Copy-Item -LiteralPath $attemptSummaryPath -Destination $ReviewResponseSummaryPath -Force
+      if (Test-CodexUsageLimitInLog -Path $LogPath) {
+        return [pscustomobject]@{
+          UsageLimit = $true
+          SummaryPath = $attemptSummaryPath
+        }
+      }
       throw "Codex review response failed. See $attemptSummaryPath"
     }
   }
@@ -939,7 +968,10 @@ $report
     "Codex review response did not produce a last-message summary." | Set-Content -LiteralPath $attemptSummaryPath -Encoding utf8
   }
   Copy-Item -LiteralPath $attemptSummaryPath -Destination $ReviewResponseSummaryPath -Force
-  return $attemptSummaryPath
+  return [pscustomobject]@{
+    UsageLimit = $false
+    SummaryPath = $attemptSummaryPath
+  }
 }
 
 function Add-ReviewResponsePrComment {
@@ -1115,6 +1147,29 @@ function Close-ReviewFailedPullRequest {
   }
   finally {
     Remove-Item -LiteralPath $commentFile -Force -ErrorAction SilentlyContinue
+  }
+}
+
+function Close-CodexUsageLimitPullRequest {
+  param(
+    [string]$Repo,
+    [string]$PrNumber,
+    [string]$BranchName,
+    [string]$TargetRoot,
+    [string]$BaseBranch
+  )
+
+  $comment = "Codex usage limit was reached before the automated review cycle could complete. Closing this unreviewed automated PR; rerun after the account limit resets."
+  Write-Log "Closing PR #$PrNumber because Codex usage limit was reached."
+  try {
+    Invoke-GhNative -Arguments @("pr", "close", $PrNumber, "--repo", $Repo, "--comment", $comment, "--delete-branch")
+    Switch-TargetToBaseForReplacement -TargetRoot $TargetRoot -BaseBranch $BaseBranch -BranchName $BranchName
+    Write-Log "Closed PR #$PrNumber. Exiting with Codex usage limit code $CodexUsageLimitExitCode."
+    exit $CodexUsageLimitExitCode
+  }
+  catch {
+    Write-Log "WARNING Failed to close usage-limit PR #$PrNumber. $($_.Exception.Message)"
+    exit $CodexUsageLimitExitCode
   }
 }
 
@@ -1660,6 +1715,15 @@ try {
         -DiffNumstat $prDiffNumstat `
         -ChangedFiles $prChangedFiles `
         -Attempt $reviewAttempt
+      if ($redteamResult.Decision -eq "USAGE_LIMIT") {
+        Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "error" -Context $RedteamStatusContext -Description "Codex usage limit reached; retry after reset"
+        Close-CodexUsageLimitPullRequest `
+          -Repo $TargetRepo `
+          -PrNumber $prNumber `
+          -BranchName $branchName `
+          -TargetRoot $TargetRoot `
+          -BaseBranch $BaseBranch
+      }
       $redteamCommentId = Add-RedteamPrComment -Repo $TargetRepo -PrNumber $prNumber -Decision $redteamResult.Decision -ReportPath $redteamResult.ReportPath -Attempt $reviewAttempt
       if ($redteamResult.Decision -eq "PASS") {
         Set-CommitStatus -Repo $TargetRepo -Sha $headSha -State "success" -Context $RedteamStatusContext -Description (Get-RedteamPassedDescription)
@@ -1691,7 +1755,7 @@ try {
           -ReportPath $redteamResult.ReportPath
       }
 
-      $responseSummaryPath = Invoke-CodexReviewResponse `
+      $responseResult = Invoke-CodexReviewResponse `
         -TargetRoot $TargetRoot `
         -Repo $TargetRepo `
         -PrNumber $prNumber `
@@ -1703,6 +1767,15 @@ try {
         -AllowedPathPatterns $AllowedPathPatterns `
         -DeniedPathPatterns $DeniedPathPatterns `
         -Attempt $reviewAttempt
+      if ($responseResult.UsageLimit) {
+        Close-CodexUsageLimitPullRequest `
+          -Repo $TargetRepo `
+          -PrNumber $prNumber `
+          -BranchName $branchName `
+          -TargetRoot $TargetRoot `
+          -BaseBranch $BaseBranch
+      }
+      $responseSummaryPath = $responseResult.SummaryPath
 
       $responseChanged = Get-ChangedFiles -TargetRoot $TargetRoot
       if ($responseChanged.Count -eq 0) {
