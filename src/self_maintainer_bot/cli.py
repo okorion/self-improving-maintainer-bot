@@ -342,7 +342,6 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "summarize-pr":
         path = write_pr_summary(
-            settings=settings,
             base_ref=args.base_ref,
             head_ref=args.head_ref,
             output_path=settings.root / args.output,
