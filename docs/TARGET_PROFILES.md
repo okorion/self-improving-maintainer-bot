@@ -21,6 +21,8 @@ profile 이름은 다음 두 형식을 지원한다.
 - `worktree`: 중앙 봇이 clone/update할 로컬 target worktree
 - `scope`: 기본 Codex 작업 scope
 - `improvementKind`: 선택 값. `docs`, `feat`, `style`, `refactor`, `auto` 중 하나이며 없으면 scheduler가 자동 선택한다.
+- `changeScale`: 선택 값. `normal`은 가치 있는 작은/중간 개선, `major`는 하나의 완결된 큰 vertical slice를 요구한다. 없으면 기존 small-improvement 동작을 유지한다.
+- `goalDirectives`: 선택 문자열 배열. 제품별 목표, major 후보, non-goal처럼 goal에 그대로 포함할 추가 지시다.
 - `docPaths`: eval과 task context에 포함할 target 문서 경로
 - `evalsPath`: target repo 안의 eval JSONL 경로
 - `verifyCommands`: publish 전에 target worktree에서 실행할 검증 명령
@@ -30,6 +32,8 @@ profile 이름은 다음 두 형식을 지원한다.
 - `autoMerge`: profile 기본 자동 merge 여부
 
 `run-target-auto-improve-loops.ps1`의 기본 자동 선택은 `feat`, `style`, `refactor` 순서로 작고 검증 가능한 non-doc 개선을 우선한다. docs PR은 별도 운용 정책에서 제한적으로 선택할 수 있지만, 반복 방지를 위해 최대 3회 연속까지만 허용하는 상한선으로 다룬다. `-ImprovementKind docs`는 수동 override다.
+
+`changeScale`은 변경 종류와 독립적이다. 예를 들어 `major` + `feat`는 큰 기능 vertical slice를 뜻하며, 여러 무관한 기능을 한 PR에 묶으라는 의미가 아니다. profile의 `maxFiles`/`maxLines`, 기존 risk 분류, red-team, CI, merge wait는 change scale과 관계없이 그대로 적용된다.
 
 ## R3 기본 정책
 

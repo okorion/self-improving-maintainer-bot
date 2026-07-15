@@ -44,6 +44,7 @@ $env:Path = @(
 ) -join ";"
 
 $BotRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
+. (Join-Path $PSScriptRoot "lib\profile-goal.ps1")
 $RunId = "$(Get-Date -Format "yyyyMMdd-HHmmss-fff")-$PID-$(([guid]::NewGuid().ToString("N")).Substring(0, 8))"
 $LogDir = Join-Path $BotRoot "runs\scheduler"
 $LockDir = Join-Path $LogDir "auto-improve.lock"
@@ -182,6 +183,9 @@ function Get-TargetGoal {
   $concept = Get-ProfileString -ProfileObject $ProfileObject -Name "projectConcept" -Fallback "The repository-specific product experience described by this target repo's README, DESIGN docs, source, and UI."
   $focusList = Get-ProfileStringList -ProfileObject $ProfileObject -Name "improvementFocus"
   $avoidList = Get-ProfileStringList -ProfileObject $ProfileObject -Name "avoidTopics"
+  $changeScale = Get-ProfileString -ProfileObject $ProfileObject -Name "changeScale"
+  $goalDirectives = Get-ProfileStringList -ProfileObject $ProfileObject -Name "goalDirectives"
+  $scaleContext = Get-ChangeScaleGoalContext -ChangeScale $changeScale -Kind $Kind -GoalDirectives $goalDirectives
   $recentPrs = Get-RecentPullRequestContext -Repo $Repo -Limit 8
   $focusText = if ($focusList.Count -gt 0) { ($focusList | ForEach-Object { "- $_" }) -join [Environment]::NewLine } else { "- the smallest useful gap in this repository's current UI, behavior, or structure" }
   $avoidText = if ($avoidList.Count -gt 0) { ($avoidList | ForEach-Object { "- $_" }) -join [Environment]::NewLine } else { "- changes chosen to match another overtura target repository's recent topic" }
@@ -190,6 +194,8 @@ function Get-TargetGoal {
 Find one repository-specific $Kind improvement for $Repo.
 
 This target repository must improve independently. Do not coordinate topics with other repositories in the batch, do not mirror another repository's PR theme, and do not choose a generic change only because it is easy to repeat.
+
+$scaleContext
 
 Repository concept:
 $concept
@@ -203,7 +209,7 @@ $avoidText
 Recent merged PRs in this repository; avoid repeating these subjects:
 $recentPrs
 
-Inspect this target repository's README, DESIGN/docs, source, UI behavior, and current git state before editing. Choose a small user-visible feat, style, or refactor change that fits this repository's own gaps. Do not use docs-only changes for a $Kind task unless $Kind is docs.
+Inspect this target repository's README, DESIGN/docs, source, UI behavior, and current git state before editing.
 "@
 }
 
@@ -1494,6 +1500,8 @@ else {
 $LockDir = Join-Path $LogDir ("auto-improve-$($TargetRepo.Replace('/', '-')).lock")
 $MaxFiles = if ($ProfileData -and $ProfileData.maxFiles) { [int]$ProfileData.maxFiles } else { 20 }
 $MaxLines = if ($ProfileData -and $ProfileData.maxLines) { [int]$ProfileData.maxLines } else { 500 }
+$ChangeScale = Resolve-ChangeScale -Value (Get-ProfileString -ProfileObject $ProfileData -Name "changeScale")
+$GoalDirectives = Get-ProfileStringList -ProfileObject $ProfileData -Name "goalDirectives"
 $ProfileAutoMerge = if ($ProfileData -and $null -ne $ProfileData.autoMerge) { [bool]$ProfileData.autoMerge } else { $false }
 $ResolvedAutoMerge = $AutoMerge.IsPresent -or $ProfileAutoMerge
 
@@ -1506,6 +1514,8 @@ Set-ProcessEnvList -Name "TARGET_ALLOWED_PATHS" -Values $AllowedPathPatterns
 Set-ProcessEnvList -Name "TARGET_DENY_PATHS" -Values $DeniedPathPatterns
 Set-ProcessEnv -Name "TARGET_MAX_FILES" -Value ([string]$MaxFiles)
 Set-ProcessEnv -Name "TARGET_MAX_LINES" -Value ([string]$MaxLines)
+Set-ProcessEnv -Name "TARGET_CHANGE_SCALE" -Value $ChangeScale
+Set-ProcessEnvList -Name "TARGET_GOAL_DIRECTIVES" -Values $GoalDirectives
 
 if ($DryRun) {
   $profileLabel = if ($ProfilePath) { $ProfilePath } else { "(none)" }
@@ -1515,6 +1525,8 @@ if ($DryRun) {
   Write-Log "Target repo: $TargetRepo"
   Write-Log "Scope: $Scope"
   Write-Log "Improvement kind: $ImprovementKind"
+  Write-Log "Change scale: $(if ($ChangeScale) { $ChangeScale } else { 'legacy' })"
+  Write-Log "Goal directives: $($GoalDirectives.Count)"
   Write-Log "Base branch: $BaseBranch"
   Write-Log "Allowed paths: $($AllowedPathPatterns -join ', ')"
   Write-Log "Denied paths: $($DeniedPathPatterns -join ', ')"

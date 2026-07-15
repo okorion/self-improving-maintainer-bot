@@ -19,7 +19,7 @@ from self_maintainer_bot.config import load_settings
 from self_maintainer_bot.docs_eval import run_docs_eval
 from self_maintainer_bot.docs_patch import propose_docs_patch
 from self_maintainer_bot.eval_store import append_eval_case, validate_eval_file
-from self_maintainer_bot.github_api import add_issue_labels, sync_labels
+from self_maintainer_bot.github_api import GitHubApiError, add_issue_labels, sync_labels
 from self_maintainer_bot.health import checks_passed, doctor_checks, print_checks, run_smoke_check
 from self_maintainer_bot.issue_forms import parse_eval_issue
 from self_maintainer_bot.pr_summary import comment_pr_summary, write_pr_summary
@@ -35,6 +35,10 @@ def _goal_from_args(args: argparse.Namespace) -> str:
     if goal_file:
         return Path(goal_file).read_text(encoding="utf-8")
     return args.goal
+
+
+def _is_read_only_integration_error(error: GitHubApiError) -> bool:
+    return error.status == 403 and "Resource not accessible by integration" in error.message
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -342,7 +346,6 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "summarize-pr":
         path = write_pr_summary(
-            settings=settings,
             base_ref=args.base_ref,
             head_ref=args.head_ref,
             output_path=settings.root / args.output,
@@ -353,12 +356,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "comment-pr-summary":
         token = token_from_env(args.token_env)
         repo = require_repo(args.repo)
-        action = comment_pr_summary(
-            repo=repo,
-            pr_number=args.pr_number,
-            token=token,
-            summary_path=settings.root / args.summary_file,
-        )
+        try:
+            action = comment_pr_summary(
+                repo=repo,
+                pr_number=args.pr_number,
+                token=token,
+                summary_path=settings.root / args.summary_file,
+            )
+        except GitHubApiError as error:
+            if not _is_read_only_integration_error(error):
+                raise
+            action = "skipped_read_only"
         print(f"PR summary comment {action}")
         return 0
 
