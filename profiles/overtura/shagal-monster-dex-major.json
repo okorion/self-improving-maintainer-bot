@@ -1,0 +1,25 @@
+{
+  "repository": "overtura/shagal-monster-dex",
+  "defaultBranch": "main",
+  "worktree": "targets/overtura/shagal-monster-dex",
+  "scope": "mixed",
+  "improvementKind": "feat",
+  "docPaths": ["README.md", "AGENTS.md", "docs", "maintainer-bot/major-backlog.md"],
+  "evalsPath": "maintainer-bot/evals/docs_qa.jsonl",
+  "projectConcept": "한국어 한 줄의 짜증·황당 상황을 브라우저 로컬 분석으로 결정론적 수집형 SVG 몬스터로 바꾸는 도감",
+  "improvementFocus": [
+    "하나의 완결된 사용자 인지 가능 vertical slice",
+    "사용자 흐름·도메인 로직·저장 또는 렌더링·오류 처리·신규 E2E 중 최소 세 영역 연결",
+    "major-backlog의 ready 항목을 acceptance criteria와 함께 완료"
+  ],
+  "avoidTopics": ["docs-only 결과", "전체 재작성", "backend·auth·유료 API", "AI 모델 교체"],
+  "verifyCommands": ["pnpm install --frozen-lockfile", "pnpm verify"],
+  "allowPaths": ["src/**", "tests/**", "e2e/**", "docs/**", "README.md", "AGENTS.md", "maintainer-bot/**", "public/assets/**"],
+  "denyPaths": [".github/workflows/**", ".env*", "package.json", "pnpm-lock.yaml", "vite.config.*", "tsconfig*.json", "eslint.config.*", "src/ai/model-config.ts", "server/**", "api/**", "functions/**", "**/auth/**", "**/security/**"],
+  "maxFiles": 20,
+  "maxLines": 1400,
+  "autoMerge": true,
+  "requireE2E": true,
+  "rejectDocsOnly": true,
+  "labels": ["self-improvement", "size:major"]
+}

@@ -1,0 +1,23 @@
+{
+  "repository": "overtura/shagal-monster-dex",
+  "defaultBranch": "main",
+  "worktree": "targets/overtura/shagal-monster-dex",
+  "scope": "mixed",
+  "improvementKind": "auto",
+  "docPaths": ["README.md", "AGENTS.md", "docs", "maintainer-bot"],
+  "evalsPath": "maintainer-bot/evals/docs_qa.jsonl",
+  "projectConcept": "한국어 한 줄의 짜증·황당 상황을 브라우저 로컬 분석으로 결정론적 수집형 SVG 몬스터로 바꾸는 도감",
+  "improvementFocus": [
+    "작은 생성·도감·진화·합성·공유 UX 개선",
+    "키보드·고대비·reduced-motion 접근성",
+    "결정론·저장 복구·fallback 신뢰성"
+  ],
+  "avoidTopics": ["backend 또는 계정", "외부 생성형 AI", "대규모 build 도구 변경"],
+  "verifyCommands": ["pnpm install --frozen-lockfile", "pnpm verify"],
+  "allowPaths": ["src/**", "tests/**", "e2e/**", "docs/**", "README.md", "AGENTS.md", "maintainer-bot/**", "public/assets/**"],
+  "denyPaths": [".github/workflows/**", ".env*", "package.json", "pnpm-lock.yaml", "vite.config.*", "tsconfig*.json", "eslint.config.*", "src/ai/model-config.ts", "server/**", "api/**", "functions/**", "**/auth/**", "**/security/**"],
+  "maxFiles": 8,
+  "maxLines": 300,
+  "autoMerge": true,
+  "labels": ["self-improvement", "size:small"]
+}

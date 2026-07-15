@@ -64,3 +64,5 @@ R2/R3 판정 규칙은 `docs/RISK_MODEL.md`를 따른다.
 - `css-scroll-odyssey`
 - `native-html-ui-kit`
 - `css-only-escape-room`
+- `shagal-monster-dex-small`
+- `shagal-monster-dex-major`
