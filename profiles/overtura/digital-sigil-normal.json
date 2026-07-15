@@ -1,0 +1,48 @@
+{
+  "repository": "overtura/digital-sigil",
+  "defaultBranch": "main",
+  "worktree": "targets/overtura/digital-sigil",
+  "scope": "mixed",
+  "improvementKind": "auto",
+  "changeScale": "normal",
+  "model": "GPT-5.6 Thinking",
+  "reasoningLevel": "High",
+  "mode": "Goal",
+  "docPaths": ["README.md", "AGENTS.md", "docs", "maintainer-bot"],
+  "evalsPath": "maintainer-bot/evals/docs_qa.jsonl",
+  "projectConcept": "브라우저 로컬 의미 분석으로 입력을 결정적인 추상 기하 SVG와 PNG로 바꾸는 밝은 편집 인쇄물 스타일의 Digital Sigil",
+  "improvementFocus": [
+    "입력과 최초 모델 다운로드 상태의 명료성",
+    "작지만 체감되는 geometry 품질과 의미 분류 calibration",
+    "SVG 및 PNG export 안정성",
+    "keyboard, contrast, reduced motion 접근성",
+    "320px부터 desktop까지의 responsive 품질",
+    "최근 merged PR과 겹치지 않는 가치 있는 중간 규모 기능"
+  ],
+  "avoidTopics": [
+    "문서만 반복 수정하는 개선",
+    "사용자에게 보이지 않는 정리만 하는 개선",
+    "최근 merged self-improvement PR과 동일한 주제",
+    "실제 종교 문양, rune, 신성 문자, 운세, 예언, 진단",
+    "backend, cloud gallery, arbitrary SVG editor, plugin framework"
+  ],
+  "goalDirectives": [
+    "Choose the highest-value small or medium product improvement visible to a user.",
+    "Inspect recent merged PRs and do not repeat their topic.",
+    "Keep the browser-only privacy boundary and deterministic SVG source of truth.",
+    "Complete implementation, tests, browser verification, and docs in the same run."
+  ],
+  "verifyCommands": ["pnpm install --frozen-lockfile", "pnpm check"],
+  "allowPaths": [
+    "README.md", "AGENTS.md", "docs/**", "maintainer-bot/**", "src/**", "tests/**", "scripts/**",
+    "index.html", "package.json", "pnpm-lock.yaml", "vercel.json", "vite.config.*", "tsconfig*.json",
+    "eslint.config.*", "playwright.config.ts", "vitest.config.ts"
+  ],
+  "denyPaths": [
+    ".github/workflows/**", ".github/CODEOWNERS", "CODEOWNERS", ".env*", ".npmrc", "infra/**",
+    "terraform/**", "k8s/**", "migrations/**", "**/auth/**", "**/security/**", "*.pem", "*.key"
+  ],
+  "maxFiles": 12,
+  "maxLines": 400,
+  "autoMerge": true
+}

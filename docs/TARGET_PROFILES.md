@@ -28,6 +28,10 @@ profile 이름은 다음 두 형식을 지원한다.
 - `denyPaths`: R3 proposal-only로 분류하고 자동 PR 게시를 차단할 경로
 - `maxFiles`, `maxLines`: 한 PR 변경량 제한
 - `autoMerge`: profile 기본 자동 merge 여부
+- `changeScale`: 선택 값. `normal`은 가치 있는 작거나 중간 규모 개선, `major`는 하나의 완결된 vertical slice를 지시한다. 필드가 없으면 기존 small 동작을 유지한다.
+- `goalDirectives`: 선택 문자열 배열. 제품별 목표와 non-goal을 Codex 목표에 추가한다.
+
+`changeScale`은 변경량 상한이나 위험 등급을 우회하지 않는다. `major`도 동일한 allow/deny path, R0-R3 분류, red-team, CI, review-response, merge wait 정책을 모두 통과해야 한다. `-DryRun`은 해석된 scale과 directives가 포함된 goal preview를 출력한다.
 
 `run-target-auto-improve-loops.ps1`의 기본 자동 선택은 `feat`, `style`, `refactor` 순서로 작고 검증 가능한 non-doc 개선을 우선한다. docs PR은 별도 운용 정책에서 제한적으로 선택할 수 있지만, 반복 방지를 위해 최대 3회 연속까지만 허용하는 상한선으로 다룬다. `-ImprovementKind docs`는 수동 override다.
 

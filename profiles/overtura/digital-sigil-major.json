@@ -1,0 +1,49 @@
+{
+  "repository": "overtura/digital-sigil",
+  "defaultBranch": "main",
+  "worktree": "targets/overtura/digital-sigil",
+  "scope": "mixed",
+  "improvementKind": "feat",
+  "changeScale": "major",
+  "model": "GPT-5.6 Thinking",
+  "reasoningLevel": "Very High",
+  "mode": "Plan -> Goal",
+  "docPaths": ["README.md", "AGENTS.md", "docs", "maintainer-bot"],
+  "evalsPath": "maintainer-bot/evals/docs_qa.jsonl",
+  "projectConcept": "브라우저 로컬 의미 분석으로 입력을 결정적인 추상 기하 SVG와 PNG로 바꾸는 밝은 편집 인쇄물 스타일의 Digital Sigil",
+  "improvementFocus": [
+    "새로운 완결형 geometry grammar family",
+    "high-resolution print 또는 poster export 전체 흐름",
+    "브라우저 로컬 저장만 사용하는 sigil collection 또는 history",
+    "여러 안전한 layer를 조합하는 제한된 composition 흐름",
+    "의미 분류와 geometry 결과를 함께 개선하는 calibration experience",
+    "한 번에 공유 가능한 정적 결과 페이지"
+  ],
+  "avoidTopics": [
+    "서로 관련 없는 여러 기능을 한 PR에 묶기",
+    "미래 확장을 위한 범용 framework",
+    "실제 종교 문양, rune, 신성 문자, arbitrary path scripting",
+    "backend, database, API route, account, cloud gallery",
+    "dependency 추가만으로 규모를 채우기"
+  ],
+  "goalDirectives": [
+    "Read repository state, recent PRs, product docs, and the core user flow before choosing work.",
+    "Plan and complete exactly one coherent user-visible vertical slice in this run.",
+    "A major slot must not be reduced to a cosmetic tweak or documentation-only change.",
+    "Preserve deterministic output, local-only inference, accessibility, and existing behavior.",
+    "Include tests and real browser verification; do not stop after the plan."
+  ],
+  "verifyCommands": ["pnpm install --frozen-lockfile", "pnpm check"],
+  "allowPaths": [
+    "README.md", "AGENTS.md", "docs/**", "maintainer-bot/**", "src/**", "tests/**", "scripts/**",
+    "index.html", "package.json", "pnpm-lock.yaml", "vercel.json", "vite.config.*", "tsconfig*.json",
+    "eslint.config.*", "playwright.config.ts", "vitest.config.ts"
+  ],
+  "denyPaths": [
+    ".github/workflows/**", ".github/CODEOWNERS", "CODEOWNERS", ".env*", ".npmrc", "infra/**",
+    "terraform/**", "k8s/**", "migrations/**", "**/auth/**", "**/security/**", "*.pem", "*.key"
+  ],
+  "maxFiles": 26,
+  "maxLines": 1800,
+  "autoMerge": true
+}

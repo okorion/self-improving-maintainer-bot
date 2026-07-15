@@ -44,6 +44,7 @@ $env:Path = @(
 ) -join ";"
 
 $BotRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
+. (Join-Path $PSScriptRoot "profile-change-scale.ps1")
 $RunId = "$(Get-Date -Format "yyyyMMdd-HHmmss-fff")-$PID-$(([guid]::NewGuid().ToString("N")).Substring(0, 8))"
 $LogDir = Join-Path $BotRoot "runs\scheduler"
 $LockDir = Join-Path $LogDir "auto-improve.lock"
@@ -182,6 +183,9 @@ function Get-TargetGoal {
   $concept = Get-ProfileString -ProfileObject $ProfileObject -Name "projectConcept" -Fallback "The repository-specific product experience described by this target repo's README, DESIGN docs, source, and UI."
   $focusList = Get-ProfileStringList -ProfileObject $ProfileObject -Name "improvementFocus"
   $avoidList = Get-ProfileStringList -ProfileObject $ProfileObject -Name "avoidTopics"
+  $changeScale = Get-ProfileChangeScale -ProfileObject $ProfileObject
+  $goalDirectives = Get-ProfileStringList -ProfileObject $ProfileObject -Name "goalDirectives"
+  $scaleContext = Get-ChangeScaleGoalContext -ChangeScale $changeScale -GoalDirectives $goalDirectives
   $recentPrs = Get-RecentPullRequestContext -Repo $Repo -Limit 8
   $focusText = if ($focusList.Count -gt 0) { ($focusList | ForEach-Object { "- $_" }) -join [Environment]::NewLine } else { "- the smallest useful gap in this repository's current UI, behavior, or structure" }
   $avoidText = if ($avoidList.Count -gt 0) { ($avoidList | ForEach-Object { "- $_" }) -join [Environment]::NewLine } else { "- changes chosen to match another overtura target repository's recent topic" }
@@ -194,6 +198,8 @@ This target repository must improve independently. Do not coordinate topics with
 Repository concept:
 $concept
 
+$scaleContext
+
 Preferred improvement areas for this repository:
 $focusText
 
@@ -203,7 +209,7 @@ $avoidText
 Recent merged PRs in this repository; avoid repeating these subjects:
 $recentPrs
 
-Inspect this target repository's README, DESIGN/docs, source, UI behavior, and current git state before editing. Choose a small user-visible feat, style, or refactor change that fits this repository's own gaps. Do not use docs-only changes for a $Kind task unless $Kind is docs.
+Inspect this target repository's README, DESIGN/docs, source, UI behavior, and current git state before editing. If no change scale is specified, preserve the existing behavior and choose a small user-visible change. For normal, choose a valuable small or medium improvement. For major, plan and complete one coherent vertical slice in this run. Do not use docs-only changes for a $Kind task unless $Kind is docs.
 "@
 }
 
@@ -1496,6 +1502,8 @@ $MaxFiles = if ($ProfileData -and $ProfileData.maxFiles) { [int]$ProfileData.max
 $MaxLines = if ($ProfileData -and $ProfileData.maxLines) { [int]$ProfileData.maxLines } else { 500 }
 $ProfileAutoMerge = if ($ProfileData -and $null -ne $ProfileData.autoMerge) { [bool]$ProfileData.autoMerge } else { $false }
 $ResolvedAutoMerge = $AutoMerge.IsPresent -or $ProfileAutoMerge
+$ChangeScale = Get-ProfileChangeScale -ProfileObject $ProfileData
+$GoalDirectives = Get-ProfileStringList -ProfileObject $ProfileData -Name "goalDirectives"
 
 Set-ProcessEnv -Name "TARGET_REPOSITORY" -Value $TargetRepo
 Set-ProcessEnv -Name "TARGET_DEFAULT_BRANCH" -Value $BaseBranch
@@ -1515,6 +1523,8 @@ if ($DryRun) {
   Write-Log "Target repo: $TargetRepo"
   Write-Log "Scope: $Scope"
   Write-Log "Improvement kind: $ImprovementKind"
+  Write-Log "Change scale: $(if ($ChangeScale) { $ChangeScale } else { '(legacy default)' })"
+  Write-Log "Goal directives: $(if ($GoalDirectives.Count -gt 0) { $GoalDirectives -join ' | ' } else { '(none)' })"
   Write-Log "Base branch: $BaseBranch"
   Write-Log "Allowed paths: $($AllowedPathPatterns -join ', ')"
   Write-Log "Denied paths: $($DeniedPathPatterns -join ', ')"
@@ -1530,12 +1540,14 @@ if ($DryRun) {
   Write-Log "Review failure exit code: $ReviewFailureExitCode"
   Write-Log "Merge wait timeout seconds: $MergeWaitTimeoutSeconds"
   Write-Log "Merge poll seconds: $MergePollSeconds"
+  $dryRunGoal = Get-TargetGoal -Repo $TargetRepo -Kind $ImprovementKind -ProfileObject $ProfileData
+  Write-Log "Goal preview:`n$dryRunGoal"
   exit 0
 }
 
 New-Item -ItemType Directory -Path $LockDir -ErrorAction Stop | Out-Null
 try {
-  Write-Log "Auto improve run started. run_id=$RunId profile=$Profile target=$TargetRepo scope=$Scope improvement_kind=$ImprovementKind auto_merge=$ResolvedAutoMerge"
+  Write-Log "Auto improve run started. run_id=$RunId profile=$Profile target=$TargetRepo scope=$Scope improvement_kind=$ImprovementKind change_scale=$ChangeScale auto_merge=$ResolvedAutoMerge"
   Invoke-CommandLine -Command "python -m self_maintainer_bot.cli prepare-target" -WorkingDirectory $BotRoot
   $TargetRoot = Get-TargetRoot
   Assert-CleanTarget -TargetRoot $TargetRoot
